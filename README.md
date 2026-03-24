@@ -15,6 +15,6 @@ As described above. SPOILERS!!: Natasha Smith is actually the villain
 Prof. Momot will be the usual brawler with a sort of dark superman/magneto complex (being able to hover for short periods of time using his Papist Magic). The hope is that Prof. Garner will play as an Olimar/Pikmin-style character by throwing TA's at enemies to fight.
 
 ## Deliverables
-
+![ProjectDeliverables.png](MarkdownMedia/ProjectDeliverables.png)
 ### Plan for completion + Deadlines
 
