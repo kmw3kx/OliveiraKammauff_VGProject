@@ -16,5 +16,29 @@ Prof. Momot will be the usual brawler with a sort of dark superman/magneto compl
 
 ## Deliverables
 ![ProjectDeliverables.png](MarkdownMedia/ProjectDeliverables.png)
+
 ### Plan for completion + Deadlines
 
+1. We need to build the "engine"
+
+I think this should be the goal for friday Mar. 28th and the rough draft: Make a lil tech demo that we can run around in. I've made a mockup of what it could look like:
+![GameMockup.png](MarkdownMedia/GameMockup.png)
+
+We need to import the pre-existing sprites that already exist, and then make some placeholder ones (or just go ahead and make them) for the ones we don't have yet. Biggest priorities for the features: 
+1. Moving & Jumping in the 2.5D space
+
+    - Use the drop shadows to determine position in the xz plane
+
+2. Animations and actions, Character properties
+
+    - Determine a moveset for Momot.
+    - Which buttons for light, heavy attacks
+    - Do we have a health bar?
+
+This shpuld help us get started and then we can keep going from there.
+
+
+I'm basing a lot of my ideas about how the game looks and plays based off of Double Dragon. [Here's](https://youtu.be/NkuB2PWJssY?si=GuOCqAQArytiKDvg) a youtube link for reference.
+
+## Log
+3/23/26 - Bob started up the repo and started planning the design of the game. Hopefully can start looking at some code tomorrow.
