@@ -1,0 +1,427 @@
+{2026VideoGameDemo_v1.0}
+con _clkfreq = 300_000_000              'Set system clock to 300MHz
+  'debug_baud = 2_000_000              'You probably do not need to adjust the Debug baud rate at which the P2 and your PC communicate over their serial interface from its default value of 2 million bits per second. This commented-out line is included just in case you need to change this.
+  'debug_delay = 500                   'You may find you need to add this 1/2 second wait before sending data to the PC's Debug window (in case your PC is slow and needs time to catch up and open the plot window before the P2 starts sending data to it)
+
+  RJoyXMin=4, RJoyXMax=252, RJoyYMin=4, RJoyYMax=252, LJoyXMin=2, LJoyXMax=254, LJoyYMin=4, LJoyYMax=252 'Your Wii Controller probably uses these default range values, but not all of them have been tested. You can use the Wii Controller Tester program to verify exactly what values your controller outputs
+  #0, x, y, width, height             '#0 resets the automatic constant counter number to 0 (just in case it has been changed by preceding unspecified constants), so here x=0, y=1, width=2, height=3 which is convenient for collision definitions arrays e.g., Mario[x] is the same as Mario[0], Mario[y] is the same as Mario[1], etc. (and for most people, it's easier to remember that the x index holds the x position value rather than the 0th index holds the x value!-)
+  FrameTime=75                        'Set your target frame duration/period in milliseconds (i.e., frame rate). This value should probably be between around 50-100ms, i.e. the screen should be cleared and completely redrawn every 50-100ms. If you set your frame rate/frequency too high (i.e., set this FrameTime/period value too low) and don't have at least around 15ms of pause time between each loop, then the USB interface through which the P2 talks to your computer may get clobberred and bogged down, which can result in strange behavior such as the controller data seeming to lag way behind, appearing to make characters move on their own or long after the controls were pressed.
+  CollisionDebugMode=false            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
+
+obj
+  sprites : "OliveiraKammauffSprites_v2"    'Include 112#methods from your external "YourNameSprites" object. Of course, you should change the "YourName" part to be your actual name (LastFirst) for your unique sprite data loading object. Both this external object and your game file will be needed to play your game (so be sure to submit both!).
+  i2c     : "jm_i2c"                  'Include methods from jm_i2c bus driver so that the Wii Controller can communicate with the P2 chip over an I2C interface
+
+var                                   'Declare global variables in this block, which can all be read or changed by any of the eight cogs at any time
+  byte data[8]                        'This array of 8 bytes is used to store data sent to the P2 chip from the Wii Classic Controller Pro. Your game must include this variable delcaration along with the SetupController and ReadController methods.
+  long MomotPos[4], Goomba[4]            'Use arrays of 4 longs like these to keep track of all of your characters' data: upper-left pixel's x-position, upper-left pixel's y-position, overall width, overall height. See the DefineCollisionAreas method below.
+  long Question1[4], Flower[4], Question2[4]
+  long deltax, x_prev, y_prev, LJoyX, LJoyY, collision, FireFlower, EasterEgg, Mushroom
+  long Momot, MomotRot, MomotMoving, MomotOpacity, GoombaRot, QuestionMark, MomotJumping, MomotPunching, PunchRight                                    '
+  long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay                               'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
+  long Stack0[100], Stack1[100], Stack2[100], Stack3[100], Stack4[100], Stack5[100], Stack6[100], Stack7[100] 'Create an empty array of 100 longs for each Cog so that a Spin interpreter running on each has enough scratchpad RAM space into which it can store temporary variables without accidentally overwriting other important data
+
+pub VideoGame() | i                   'This method runs on Cog 0 (which is what everything automatically starts running on by default)
+  debug(`plot screen pos 100 0 size 768 640 backcolor black update) 'Create the main 768x640 pixel plot window for the game called "screen"
+  debug(`screen set 400 330 blue text 50 'Loading sprites...')
+  debug(`screen update)               'Refresh the screen in order to display the "Loading sprites" message. Note: You must always run an "update" command in order to actually see any changes you make to the debug data! In other words, calling other "debug" commands only changes the data for the next time that the screen is updated. Other debug commands do NOT automatically update the screen!!!
+  SetupController()                   'Call the SetupController method (below) that sets up the I2C interface between the P2 and the Wii Controller
+  ReadController()                    'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
+  sprites.LoadSprites()               'Run the LoadSprites method from within your own Sprites object (a separate file) to upload all of your sprite data from the P2 chip's RAM into your PC's RAM
+  debug(`screen clear update)         'Erase everything on the plot screen and update the screen (to erase the "Loading Sprites" text)
+  ShowInstructions()                  'Display the instructions by overlaying a new debug text terminal over top of the video game's plot window
+
+  DefineCollisionAreas()              'Call the method that sets up the rectangles around objects that will be used to detect collisions
+  EasterEgg:=false                    'Start out with the EasterEgg mode disabled (i.e, just drawing the blue sky box as the background)
+
+  Momot := 100                                  'Starting sprite number for Mario's bottom half image
+  MomotOpacity:=255                               'Start with Mario fully opaque (the 4th parameter in a debug sprite command adjusts transparency between 255 (default) and 0, which is fully transparent/invisible
+  QuestionMark:=180
+  PunchRight := true
+  cogspin(1,MarioMotion(),@Stack1)                'Start up Cog 1 and tell it to run the MarioMotion method in parallel to what's already running on Cog 0
+  cogspin(2,GombaMotion(),@Stack2)                'Start up Cog 2 and tell it to run the GoombaMotion method in parallel to what's already running on Cog 0 and Cog 1
+  cogspin(3,QuestionMotion(),@Stack3)                                             '<--add your own code here to activate more cogs. Remember do NOT call debug plot commands on any cogs other than Cog 0!!!
+  cogspin(7,DebugDisplay(),@Stack7)               'Start up Cog 7 and tell it to run the DebugDisplay method in parallel to what's going on on all of the other cogs (Note: You are not required to have this feature in your final game i.e., if you need to use Cog 7 for something else)
+
+  repeat                                          'This is the game's main repeat loop. Ideally all debug plot/screen commands should be in this loop (and the methods it calls). So all debug plot/screen commands should only be called by Cog 0
+    StartTime:=getct()                            'Record current system clock counter value to know when this iteration of the main game loop starts
+    debug(`screen clear)                          'Erase everything on the screen. Note: If you draw/redraw things over the entire screen (as the DrawBackground method does in this demo), then this statement is not necessary. You also may want to keep (i.e. not clear and redraw every frame) certain parts of your background that a character will never move on top of (to save time in each iteration of your main game loop)
+
+    DrawBackground()                              'Call the DrawBackgroung method, which redraws the entire screen's background shapes and sprites, then return to this line of code
+
+    deltax:=abs(MomotPos[x]-x_prev)                  'Difference between current x and previous x position (how far character has moved since last main loop iteration)
+    x_prev:=MomotPos[x]                              'Store Mario's previous x position
+    y_prev:=MomotPos[y]                              'Store Mario's previous y position
+
+    ReadController()                              'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
+
+    LJoyX:=0#>(data[0]-LJoyXMin)*100/(LJoyXMax-LJoyXMin)<#100   'Scale the left joystick's analog X and Y ranges to be between 0-100
+    LJoyY:=0#>(data[2]-LJoyYMin)*100/(LJoyYMax-LJoyYMin)<#100   'Note that enclosing a computation or result between #> and <# in Spin2 limits the minimum and maximum value (in this case to beween 0 and 100)
+
+    case_fast LJoyX                               'If the range of values is you're checking is less than 256, you can use case_fast instead of the normal case to shave ~10.64 microseconds off your main loop time. Be careful NOT to use case_fast if the max value expands beyond 256 from the min, and just use regular "case" instead!!!
+       0..20  : MomotPos[x]:=0#> MomotPos[x]-16 <#740   'Note: You may need to tweak the deadband of your joystick to more or less than 40-60
+      21..30  : MomotPos[x]:=0#> MomotPos[x]-8 <#740    'Limit x position values to within 0-740 to always keep Mario on the 768x640 pixel screen. The width of Mario's character at 2x size is about 768-740=28 pixels.
+      31..40  : MomotPos[x]:=0#> MomotPos[x]-4 <#740    'Note: You may wish to experiment with these ranges and/or the analog input scaling range (currently 0-100) until the joystick response feels just right to you
+      '41-60 is joystick deadband (X position doesn't change)
+      61..70  : MomotPos[x]:=0#> MomotPos[x]+4 <#740
+      71..80  : MomotPos[x]:=0#> MomotPos[x]+8 <#740
+      81..100 : MomotPos[x]:=0#> MomotPos[x]+16 <#740
+    case_fast LJoyY
+       0..20  : MomotPos[y]:=128#> MomotPos[y]-16 <#650
+      21..30  : MomotPos[y]:=128#> MomotPos[y]-8 <#650
+      31..40  : MomotPos[y]:=128#> MomotPos[y]-4 <#650
+      '41-60 is joystick deadband (Y position doesn't change)
+      61..70  : MomotPos[y]:=128#> MomotPos[y]+4 <#650
+      71..80  : MomotPos[y]:=128#> MomotPos[y]+8 <#650
+      81..100 : MomotPos[y]:=128#> MomotPos[y]+16 <#650
+
+    if MomotPos[x]<>x_prev                           'Check to see if Mario's x position has changed
+      MomotMoving:=true                           'Set the MomotMoving flag to true (which Cog 2 running MarioMotion looks for)
+      if MomotPos[x]>x_prev
+        MomotRot:=0                               'Rotate sprite(s) to face right
+      elseif MomotPos[x]<x_prev                      'If pot has been turned left more than 3 units
+        MomotRot:=1                               'Rotate sprite(s) to face left
+        MomotMoving:=true
+    else
+      MomotMoving:=false
+
+    if FireFlower==true                             'Only draw the fire flower on the screen if this "flag" variable is true (Note: This is the best way to deal with sprites appearing/dissapearing. Do not set sprites to 0% opacity and thereby waste time printing invisible sprites on your screen!
+      debug(`screen set (`(Question1[0]),`(Question1[1]+32)) sprite (190, 0, 2))
+      if CheckCollision(@MomotPos,@Flower)
+        MomotOpacity:=255                           'If Mario has already collied with Goomba and then touches the flower, he becomes fully opaque again (no longer a ghost)
+
+            'Sprites's: X position,  Y position   Sprite's: image #,  rotation, scaling, opacity
+    debug(`screen set (`(MomotPos[x]), `(MomotPos[y])) sprite (`(Momot), `(MomotRot), 2, `(MomotOpacity))
+           'Print Mario's bottom sprite on screen
+
+    debug(`screen set (`(Goomba[0]), 96) sprite (252, `(GoombaRot), 2))                                        'Print Goomba sprite on screen
+
+    collision:=CheckCollision(@MomotPos,@Goomba)       'Check for any collisions between the Mario and Goomba bounding boxes (you must use the "at" symbol to send the RAM address of the start of the 4 long variable array for each character). Store the return value of the CheckCollision method (in this case true or false) to the global variable "collision"
+    if collision==true                              'If Mario collided with Goomba
+      MomotOpacity:=64                              ' then make Mario sprites three quarters transparent (i.e., 64/256ths opaque)
+
+    if CheckCollision(@MomotPos,@Question1)==true      'Note for "if" statements in Spin2 "==true" is implied so including it isn't technically necessary, but leaving this in arguably makes your code more readable and it won't make any difference in terms of processing speed.
+      FireFlower:=true
+
+    if CheckCollision(@MomotPos,@Question2)==true
+       Mushroom:=true
+                                     'Note that you can either use the CheckCollision methods return value directly in an "if" statement as demoed here, or store its value to variable as demoed above.
+    if Mushroom==true
+      debug(`screen set (`(Question2[0]),`(Question2[1]+32)) sprite (188, 0, 2))
+
+                       'Start drawing the Rotunda on each frame
+
+    if data[6].[4]==0                               'Check the 4th bit of the 6th data byte from the controller, which is the -/select button. If it is pressed (=0 in inverted logic), then call the GamePause method to pause the game
+      PauseGame()
+
+    if (data[7].[6] == 0) and (MomotJumping == false)
+      MomotJumping := true                              'AI Helped with the Jumping Logic, specifically on how to make it one motion with one press of B'
+      Momot := 100
+
+    if MomotJumping
+      MomotJump()
+      waitms(50#> 600/deltax <#333)
+
+    if data[7].[4]==0 and (MomotPunching == false)
+      MomotPunching:=true
+      Momot:=100
+
+    if MomotPunching
+      MomotPunch()
+       waitms(50#> 600/deltax <#333)
+
+
+    'It is highly recommended that you include the following code in your game
+    FrameRate:=FrameTime*300_000 - abs(StartTime-getct())   'Calculate the number of clock pulses remaining (that you need to pause for) to hit the target frame rate (specified by your FrameTime constant)
+    if FrameRate<=0                                 'If the loop has taken more than the target frame time, display warning message. If you see this message, you need to increase the value of your FrameTime constant or decrease the amount of code (especially debug commands) running in your game's main repeat loop
+      debug(`screen set 384 600 red text 20 'Frame loop took longer than 100ms!!!')              '
+    waitct(FrameRate+getct())
+    debug(`screen update)                           'Force game window to update then wait/delay 60ms Hint: Experiment with a delay of 0-100ms to get your total loop time (the time it takes to draw/redraw each frame/image) to be around 50-150 milliseconds. Just experiment with what works best for your final game to run smoothly.
+    RawLoopTime:=abs(StartTime-getct())             'Record total loop time (not counting debug delay below) units=1/300_000_000=3.3333 nanoseconds
+
+pub DebugDisplay()                                  'Use to display variables on the screen (Note: You could put this onto a separate cog if you need for your main game repeat loop on Cog 0 to run faster)
+  debug(`term term1 pos 867 0 size 28 12 textsize 18 color cyan)    'Create terminal window to display variables to help with debugging or to display a score
+  DisplayDelay:=clkfreq/5+getct()                   'Store a system clock "Tick" time that is 0.2 seconds in the future
+
+  repeat
+    LoopTime:=RawLoopTime*10/3000                   'Convert RawLoopTime (in units of system clock pulses) into microseconds
+    FrameWaitTime:=FrameRate*10/3000                'Convert FrameRate (in units of system clock pulses) into microseconds. This should be
+    if pollct(DisplayDelay)==true                   'Check to see if system counter has exceeded the DisplayDelay value
+      debug(`term1 clear)                           'Erase everything on the terminal (text) window
+      debug(`term1 'JoyX = `(LJoyX)',10)            'Display any values that might be helpful when debugging, 10=New Line (so it creates a new line after printing)
+      debug(`term1 'JoyY = `(LJoyY)',10)
+      debug(`term1 'MomotPos[x] = `(MomotPos[x])',10)
+      debug(`term1 'MomotPos[y] = `(MomotPos[y])',10)
+      debug(`term1 'deltax = `(deltax)',10)
+      debug(`term1 'LoopTime = `(LoopTime)' 'µs',10)
+      debug(`term1 'Frame Wait Time = `(FrameWaitTime)' 'µs',10)
+
+      debug(`term1 'Right Trigger = `(data[5])',10)
+
+      if data[7].[4]==0                             'Check the 4th bit of the 7th data byte from the controller, which is the "a" button
+        debug(`term1 'A button IS Pressed',10)
+      else
+        debug(`term1 'A button NOT Pressed',10)
+      if data[7].[2]==0                             'Check the 2nd bit of the 7th data byte from the controller, which is the "ZR" button
+        debug(`term1 'Right Z button IS Pressed',10)
+      else
+        debug(`term1 'Right Z button NOT Pressed',10)
+      if collision==true
+        debug(`term1 'Collision Detected!')
+      else
+        debug(`term1 'All Clear')
+      DisplayDelay:=DisplayDelay+clkfreq/5          'Add another 0.2 second worth of system clock pulses to DisplayDelay time (for the next delay)
+
+
+pub GombaMotion()                    'This is an example of how to use parallel cogs to handle different event timings.
+  repeat                             ' Here Cog 1 changes the global variables GoombaPos and GoombaRot and Cog 0 uses these values to update the game.
+    repeat until Goomba[0]>=800      'Goomba walks back and forth along the x-axis between pixels 300 through 800
+      Goomba[0]:=Goomba[0]+6         'Move Goomba sprite to the right 6 pixels
+      ToggleGoomba()                 'Call the ToggleGoomba method to adjust the sprites rotation
+    repeat until Goomba[0]<=300
+      Goomba[0]:=Goomba[0]-6
+      ToggleGoomba()
+
+pub ToggleGoomba()                   'By rotating the Goomba sprite such that it flips between mirror images, it appears as though it is walking
+  if GoombaRot==0
+    GoombaRot:=1
+    waitms(175)                      'Because this is running on a different cog/processor than the video game's main loop, this pause does not slow the game down at all, whereas if this were all running on Cog 0, the entire game would  pause for 175ms at this point
+  elseif GoombaRot==1
+    GoombaRot:=0
+    waitms(175)
+
+pub MarioMotion()                    'Cycle through Mario's leg sprite images whenever he's moving to make it look like he's running
+  repeat
+    if MomotMoving==false            'Check to see if Cog 0 has set the MomotMoving flag to be true or false
+      Momot:=100                 'Set MarioLegs to be the stationary leg sprite
+    repeat until MomotMoving==true   'Repeat just this line until Mario is moving
+    case Momot                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
+      100 : Momot:=101           ' If MarioLegs==101, then set MarioLegs:=102
+      101 : Momot:=102           ' If MarioLegs==102, then set MarioLegs:=103
+      102 : Momot:=103           ' If MarioLegs==103, then set MarioLegs:=105
+      103 : Momot:=100           ' If MarioLegs==105, then set MarioLegs:=101
+    waitms(50#> 600/deltax <#333)    'Wait between 33ms - 333ms (speed scaled based on distance moved)
+
+pub QuestionMotion()
+
+  repeat
+    case QuestionMark
+      180 : QuestionMark:=181
+      181 : QuestionMark:=182
+      182 : QuestionMark:=183
+      183 : QuestionMark:=180
+    waitms(300)
+
+pub DefineCollisionAreas()           'Make arrays for each entity's boundary box's coordinate info [x0,y0,width,height], where x0 and y0 are the upper left pixel of the box
+                                     'e.g., Mario[x] is x-position of upper left pixel, Mario[y] is y-position of upper left pixel, Mario[width] is Mario's overall height, Mario[height] is Mario's overall width (uncomment lines in CheckCollision to see red bounding boxes)
+  MomotPos[x]:=100                      'Starting Mario x position (will probably be overwritten by current joystick pot value soon)
+  MomotPos[y]:=128                      'Starting Mario y position (upper left corner of his top half sprite)
+  MomotPos[width]:=64                   'Width of Mario's character (32 since we're displaying the 16x16 sprite image at 2x scale)
+  MomotPos[height]:=64                  'Height of Mario's character (64 since we're displaying two 16x16 sprite images at 2x scale)
+
+  Goomba[0]:=800                     'Starting Goomba x position (far right of screen)
+  Goomba[1]:=96                      'Starting Goomba y position
+  Goomba[2]:=32                      'Width of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
+  Goomba[3]:=32                      'Height of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
+
+  Question1[0]:=240
+  Question1[1]:=220
+  Question1[2]:=32
+  Question1[3]:=32
+
+  Question2[0]:=432
+  Question2[1]:=220
+  Question2[2]:=32
+  Question2[3]:=32
+
+  Flower[0]:=240
+  Flower[1]:=252
+  Flower[2]:=32
+  Flower[3]:=32
+
+  'Add your own bounding box definitions here for other objects and/or shapes with which you want to check collisions. Be sure to declare an array of four longs for each of these definitions in the VAR section!
+  'Note that you could make larger arrays for each entity e.g., a 5th index to hold rotation info, a 6th to hold transparency level, etc. Just be sure to allot more space to the variable where it is defined/reserved up top in the "var" section.
+
+
+pub CheckCollision(Box1address,Box2address) : CollisionState      'CREDIT: This algorithm is based on the one described at https://developer.mozilla.org/en-US/docs/Games/Techniques/2D_collision_detection
+  CollisionState~                                                 'Initialize CollisionState as zero (which is the same as "false")
+  if long[Box1address]<(long[Box2address]+long[Box2address][2]) and {
+            }(long[Box1address]+long[Box1address][2])>long[Box2address] and {
+                 } long[Box1address][1]>(long[Box2address][1]-long[Box2address][3]) and {
+                      } (long[Box1address][1]-long[Box1address][3])<(long[Box2address][1])
+    CollisionState:=true                                          'If a collision is detected set the method's return value to "true" (which is -1 or 32 ones in binary)
+  else
+    CollisionState:=false
+
+  if CollisionDebugMode==true 'Show red bounding boxes around the characters and to display an alert on the screen whenever there's a collision.
+                              'Note this significantly slows down your main loop, so only use this feature for a brief time while debugging specific problems i.e., don't keep this active throughout your entire game making process!
+    debug(`screen set `(long[Box1address]) `(long[Box1address][1]) red line `(long[Box1address]+long[Box1address][2])) `(long[Box1address][1]))
+    debug(`screen set `(long[Box1address]+long[Box1address][2])) `(long[Box1address][1])) red line `(long[Box1address]+long[Box1address][2])) `(long[Box1address][1]-long[Box1address][3]))
+    debug(`screen set `(long[Box1address]+long[Box1address][2])) `(long[Box1address][1]-long[Box1address][3])) red line `(long[Box1address])) `(long[Box1address][1]-long[Box1address][3]))
+    debug(`screen set `(long[Box1address])) `(long[Box1address][1]-long[Box1address][3])) red line `(long[Box1address]) `(long[Box1address][1]))
+
+    debug(`screen set `(long[Box2address]) `(long[Box2address][1]) red line `(long[Box2address]+long[Box2address][2])) `(long[Box2address][1]))
+    debug(`screen set `(long[Box2address]+long[Box2address][2])) `(long[Box2address][1])) red line `(long[Box2address]+long[Box2address][2])) `(long[Box2address][1]-long[Box2address][3]))
+    debug(`screen set `(long[Box2address]+long[Box2address][2])) `(long[Box2address][1]-long[Box2address][3])) red line `(long[Box2address])) `(long[Box2address][1]-long[Box2address][3]))
+    debug(`screen set `(long[Box2address])) `(long[Box2address][1]-long[Box2address][3])) red line `(long[Box2address]) `(long[Box2address][1]))
+
+    if CollisionState==true
+      debug(`screen set 400 330 red text 50 'Collision!!!')
+
+pub PauseGame()                                   'If player presses the Select button on the controller, the game should pause until the player presses Select again. Note that this only pauses your main game loop on Cog 0. Other cogs will still be running as usual (which could continue to change some global variables).
+  debug(`screen set 400 330 red text 50 '<PAUSED>')
+  debug(`screen update `dly(1000))                'Force game window to update (in order to display the "<PAUSED>" text) then wait/delay 1 second
+  ReadController()                                'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
+  repeat until data[6].[4]==0                     'Wait for the player to press the + button a second time to un-pause the game
+    ReadController()                              'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
+    waitms(100)                                   'Slow things down during this paused condition while just waiting for the usert to un-pause the game
+  repeat until data[6].[4]==1                     'Wait for the player to release the + button (otherwise another pause condition may be immediately initiated again)
+    ReadController()                              'Update the controller button data
+  StartTime:=getct()                              'Re-record current system clock counter (so that the >100ms warning isn't displayed when this frame finishes)
+
+pub DrawBackground() | i,j
+  debug(`screen set 384 352 color $6B8CFF box 768 574)  'Draw a big blue box (768x574 pixels)for the Mario World sky centered at x=384 y=352 (covering everything above the ground)
+                                       'Draw the Rotunda sprite tiles everywhere above the ground
+
+  'Draw the ground
+  repeat i from 0 to 800 step 32
+      debug(`screen set (`(i), 64) sprite (164, 0, 2))
+
+  debug(`screen set (upper-left_X_coordinate, upper-left_Y_coordinate) sprite (SpriteNumber, Rotation, ScalingFactor, SpriteOpacity))
+
+  'Draw the single cloud
+  debug(`screen set (400,516) sprite(167,0,2))
+
+  '<---Hint: debug(`screen set (upper-left_X_coordinate=400, upper-left_Y_coordinate=516) sprite (SpriteNumber=135, Rotation=0, ScalingFactor=2, Opacity=255(default))
+
+  'Draw the tripple bush
+  debug(`screen set (96,96) sprite(165,0,2))
+  debug(`screen set (143,96) sprite(166,0,2))
+  debug(`screen set (175,96) sprite(166,0,2))
+
+                           '<---Hint: debug(`screen set (upper-left_X_coordinate=96, upper-left_Y_coordinate=96) sprite (SpriteNumber=133, Rotation=0, ScalingFactor=2, Opacity=255(default))
+
+
+  'Draw the tripple cloud
+  debug(`screen set (640, 400) sprite (167, 0, 2))
+  debug(`screen set (688, 400) sprite (168, 0, 2))
+  debug(`screen set (720, 400) sprite (168, 0, 2))
+  'Draw a Hill
+  debug(`screen set (240, 112) sprite (169, 0, 2))
+  debug(`screen set (304, 112) sprite (170, 0, 2))
+  'Draw the little bush
+  debug(`screen set (512, 96) sprite (165, 0, 2))
+
+  'Draw the Pipe
+  debug(`screen set (656, 128) sprite (171, 0, 2))
+
+  'Draw question marks and bricks
+  debug(`screen set (240, 220) sprite (`(QuestionMark), 0, 2))      '<-Question Mark
+  debug(`screen set (400, 220) sprite (194, 0, 2)
+  debug(`screen set (432, 220) sprite (`(QuestionMark), 0, 2)       '<-Question Mark
+  debug(`screen set (464, 220) sprite (194, 0, 2)
+  debug(`screen set (496, 220) sprite (`(QuestionMark), 0, 2)       '<-Question Mark
+  debug(`screen set (528, 220) sprite (194, 0, 2)
+  debug(`screen set (464, 350) sprite (`(QuestionMark), 0, 2)       '<-Question Mark
+
+
+pub ShowInstructions() | i
+  debug(`term Instructions pos 140 100 size 75 24 textsize 12 color black white backcolor white)  'Create a new debug terminal window called called "Instructions" at x=140 y=100 on the PC screen (overlaid on plot window)                                                                                            ' that is 75 spaces wide by 10 lines deep with text color=black on white with white background and font size 12
+                                                                                                  ' that is 75 text spaces wide by 24 lines deep with text color=black on white with white background and font size 12
+  repeat i from 0 to 1                           'This is a demo of how to point to different string addresses in a "for" loop
+    PrintStr(@@StringAddress[i])                 'Print string who's starting address is at the specified memory location (Note: You must use two @ symbols to pass the address of a string like this!)
+  debug(`Instructions 2 15 3 10)                 'Set cursor's column to 30 and row to be 10 (2=set column command, 3=set row command -> see Text Terminal section of Spin2 Programming documnent)
+  PrintStr(@string2)                             'Print string who's starting address is at the memory location named string2
+  repeat until data[6].[2]==0                    'Wait until Start button is pressed on the Wii controller
+    ReadController()                             'Update data bytes from the Wii Controller
+    waitms(100)                                  'No need to do this too quickly as we're dealing with human-scale speeds and don't want to clober the I2C interface or waste electricity
+  debug(`Instructions clear)                     'Clear entire terminal window and reset cursor to home (upper left)
+  debug(`Instructions 2 33 3 5)                  'Set cursor's column to 33 and row to be 5
+  PrintStr(@string3)                             'Print string who's starting address is at the memory location named string3
+  waitms(750)
+  debug(`Instructions close)                     'Close this debug text terminal window
+
+pub PrintStr(strAddress)                         'Print a string of characters that starts at a specified memory address (with no new line afterward)
+  repeat (strsize(strAddress))                   'Repeat once for each character in the string (strsize returns the total length of the string up to its terminating 0
+    if byte[strAddress]==13                      'Check to see if the current character is code=13, which indicates a line feed and carriage return
+      debug(`Instructions 13)                    'Create a new line and carriage return (i.e., return cursor to the far left)             `
+      strAddress++                               'Increment the string address index pointer by 1 to move on to the next character in the string
+    else
+      debug(`Instructions `(byte[strAddress++])) 'Print the last character and increment the address pointer
+
+dat
+string0       byte "Mario Demo Game Instructions:", 13, 13, 0    'Define a zero-terminated string of characters/bytes starting at memory address "string0" Use character=13 to add new lines (2 in this case)
+string1       byte {                                             'Here's an example of how you can define one long string across multiple lines
+} "Use the Wii Controller's left joystick to move Mario around.", 13, "If Mario collides with Goomba, he becomes a ghost, but if Mario finds and  touches the FireFlower he is reborn.", 13, 13, {
+}"Hint: What happens if you press both the A and ZR buttons at the same time while Mario is standing on top of the topmost question mark? ;-)",0
+string2       byte "---> Press the Start Button to play...",0
+string3       byte "HAVE FUN!!!",0
+StringAddress long @string0, @string1, @string2, @string3        'Make a list/array that holds the addresses of these strings to make it easy to display them in a "for" loop or other scheme
+
+con 'Your game must include the following two methods in order to use the Wii Classic Controller Pro
+pub SetupController()               ''Set up the I2C interface through which the Wii Classic Controller Pro and the P2 chip communicate
+  i2c.setup(10, 11, 400, i2c.PU_1K5)'Set up I2C driver using the Clock (Pin 6) and Data (Pin 7) pins' built-in 1.5K Ohm pull-up resistors
+  i2c.start()                       'Initialize I2C interface
+  i2c.write($A4)                    'Set address to $A400F0
+  i2c.write($F0)
+  i2c.write($55)                    'Write $55 to address $A4F0, which initializes controller without encryption
+  i2c.stop()
+  i2c.start()
+  i2c.write($A4)                    'Set address to $A4FB
+  i2c.write($FB)
+  i2c.write($00)                    'Write $00 to address $A4FB,
+  i2c.stop()
+  waitus(150)
+
+  i2c.start()
+  i2c.write($A4)                    'Set address to $A4FE
+  i2c.write($FE)
+  i2c.write($03)                    'Write $55 to address $A400F0, which sets data format mode to $03
+  i2c.stop()
+  waitus(150)
+  ReadController()                  'Read the controller to set all of the data bytes since they initialize as all zeros and the controller uses inverted logic (all ones when no buttons are pressed)
+
+pub ReadController() | i            ''Have the P2 chip get the 8 bytes of data (with the button and joystick input states) from the Wii Classic Controller Pro via the I2C interface
+  i2c.start()                       'Send Conversion Command (to get all sensor data read and stored into the 8-byte data registers)
+  i2c.write($A4)                    'Set address to $A4 (the writing address)
+  i2c.write($00)
+  i2c.stop()
+  waitus(150)                       'The max speed for standard I2C protocol is ~400kHz, so need to slow things down a little
+
+  i2c.start()
+  i2c.write($A5)                    'Set address to $A5 (the start of where controller's input data is stored and read from)
+  repeat i from 0 to 6
+    data[i]:=i2c.read(0)            'Read in byte, store it to data array, then send 0=ACK
+  data[7]:=i2c.read(1)              'Read in last byte, store it to data array, then send 1=NAK (after this last byte)
+  i2c.stop()
+
+pub MomotJump()                                                      'Set MarioLegs to be the stationary leg sprite
+  case Momot                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
+      100 : Momot:=105           ' If MarioLegs==101, then set MarioLegs:=102
+      105 : Momot:=106
+        MomotPos[y]:=MomotPos[y]+64
+        waitms(300#> 750/deltax <#750)                                     ' If MarioLegs==102, then set MarioLegs:=103
+      106 : Momot:=107
+        MomotPos[y]:=MomotPos[y]-64
+      107 : Momot:=100
+        MomotJumping:=false
+
+pub MomotPunch()
+  if PunchRight == true
+    case Momot
+      100 : Momot:= 111
+      111 : Momot:= 112
+      112 : Momot:= 113
+      113 : Momot:= 114
+      114 : Momot:= 100
+        PunchRight:= false
+        MomotPunching:= false
+  else
+    case Momot
+      100 : Momot:= 116
+      116 : Momot:= 117
+      117 : Momot:= 118
+      118 : Momot:= 119
+      119 : Momot:= 100
+        PunchRight:= true
+        MomotPunching := false
