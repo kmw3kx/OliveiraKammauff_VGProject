@@ -6,7 +6,7 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
   RJoyXMin=4, RJoyXMax=252, RJoyYMin=4, RJoyYMax=252, LJoyXMin=2, LJoyXMax=254, LJoyYMin=4, LJoyYMax=252 'Your Wii Controller probably uses these default range values, but not all of them have been tested. You can use the Wii Controller Tester program to verify exactly what values your controller outputs
   #0, x, y, width, height             '#0 resets the automatic constant counter number to 0 (just in case it has been changed by preceding unspecified constants), so here x=0, y=1, width=2, height=3 which is convenient for collision definitions arrays e.g., Mario[x] is the same as Mario[0], Mario[y] is the same as Mario[1], etc. (and for most people, it's easier to remember that the x index holds the x position value rather than the 0th index holds the x value!-)
   FrameTime=75                        'Set your target frame duration/period in milliseconds (i.e., frame rate). This value should probably be between around 50-100ms, i.e. the screen should be cleared and completely redrawn every 50-100ms. If you set your frame rate/frequency too high (i.e., set this FrameTime/period value too low) and don't have at least around 15ms of pause time between each loop, then the USB interface through which the P2 talks to your computer may get clobberred and bogged down, which can result in strange behavior such as the controller data seeming to lag way behind, appearing to make characters move on their own or long after the controls were pressed.
-  CollisionDebugMode=false            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
+  CollisionDebugMode=true            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
 
 obj
   sprites : "OliveiraKammauffSprites_v2"    'Include 112#methods from your external "YourNameSprites" object. Of course, you should change the "YourName" part to be your actual name (LastFirst) for your unique sprite data loading object. Both this external object and your game file will be needed to play your game (so be sure to submit both!).
@@ -14,10 +14,9 @@ obj
 
 var                                   'Declare global variables in this block, which can all be read or changed by any of the eight cogs at any time
   byte data[8]                        'This array of 8 bytes is used to store data sent to the P2 chip from the Wii Classic Controller Pro. Your game must include this variable delcaration along with the SetupController and ReadController methods.
-  long MomotPos[4], Goomba[4]            'Use arrays of 4 longs like these to keep track of all of your characters' data: upper-left pixel's x-position, upper-left pixel's y-position, overall width, overall height. See the DefineCollisionAreas method below.
-  long Question1[4], Flower[4], Question2[4]
-  long deltax, x_prev, y_prev, LJoyX, LJoyY, collision, FireFlower, EasterEgg, Mushroom
-  long Momot, MomotRot, MomotMoving, MomotOpacity, GoombaRot, QuestionMark, MomotJumping, MomotPunching, PunchRight                                    '
+  long MomotPos[4], BulletB[4]            'Use arrays of 4 longs like these to keep track of all of your characters' data: upper-left pixel's x-position, upper-left pixel's y-position, overall width, overall height. See the DefineCollisionAreas method below.
+  long deltax, x_prev, y_prev, LJoyX, LJoyY, collision, HealthBar
+  long Momot, MomotRot, MomotMoving, MomotOpacity, MomotJumping, MomotPunching, PunchRight, MomotKicking, MomotBlocking                                    '
   long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay                               'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
   long Stack0[100], Stack1[100], Stack2[100], Stack3[100], Stack4[100], Stack5[100], Stack6[100], Stack7[100] 'Create an empty array of 100 longs for each Cog so that a Spin interpreter running on each has enough scratchpad RAM space into which it can store temporary variables without accidentally overwriting other important data
 
@@ -31,17 +30,16 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
   debug(`screen clear update)         'Erase everything on the plot screen and update the screen (to erase the "Loading Sprites" text)
   ShowInstructions()                  'Display the instructions by overlaying a new debug text terminal over top of the video game's plot window
 
-  DefineCollisionAreas()              'Call the method that sets up the rectangles around objects that will be used to detect collisions
-  EasterEgg:=false                    'Start out with the EasterEgg mode disabled (i.e, just drawing the blue sky box as the background)
+  DefineCollisionAreas()              'Call the method that sets up the rectangles around objects that will be used to detect collisions                   'Start out with the EasterEgg mode disabled (i.e, just drawing the blue sky box as the background)
 
   Momot := 100                                  'Starting sprite number for Mario's bottom half image
-  MomotOpacity:=255                               'Start with Mario fully opaque (the 4th parameter in a debug sprite command adjusts transparency between 255 (default) and 0, which is fully transparent/invisible
-  QuestionMark:=180
+  MomotOpacity:=255
+  HealthBar:=144                               'Start with Mario fully opaque (the 4th parameter in a debug sprite command adjusts transparency between 255 (default) and 0, which is fully transparent/invisible
   PunchRight := true
-  cogspin(1,MarioMotion(),@Stack1)                'Start up Cog 1 and tell it to run the MarioMotion method in parallel to what's already running on Cog 0
-  cogspin(2,GombaMotion(),@Stack2)                'Start up Cog 2 and tell it to run the GoombaMotion method in parallel to what's already running on Cog 0 and Cog 1
-  cogspin(3,QuestionMotion(),@Stack3)                                             '<--add your own code here to activate more cogs. Remember do NOT call debug plot commands on any cogs other than Cog 0!!!
+  cogspin(1,MarioMotion(),@Stack1)
+  cogspin(2, DrawBackground(),@Stack2)                'Start up Cog 1 and tell it to run the MarioMotion method in parallel to what's already running on Cog 0
   cogspin(7,DebugDisplay(),@Stack7)               'Start up Cog 7 and tell it to run the DebugDisplay method in parallel to what's going on on all of the other cogs (Note: You are not required to have this feature in your final game i.e., if you need to use Cog 7 for something else)
+  Momot:=100
 
   repeat                                          'This is the game's main repeat loop. Ideally all debug plot/screen commands should be in this loop (and the methods it calls). So all debug plot/screen commands should only be called by Cog 0
     StartTime:=getct()                            'Record current system clock counter value to know when this iteration of the main game loop starts
@@ -67,13 +65,13 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
       71..80  : MomotPos[x]:=0#> MomotPos[x]+8 <#740
       81..100 : MomotPos[x]:=0#> MomotPos[x]+16 <#740
     case_fast LJoyY
-       0..20  : MomotPos[y]:=128#> MomotPos[y]-16 <#650
-      21..30  : MomotPos[y]:=128#> MomotPos[y]-8 <#650
-      31..40  : MomotPos[y]:=128#> MomotPos[y]-4 <#650
+       0..20  : MomotPos[y]:=64#> MomotPos[y]-16 <#312
+      21..30  : MomotPos[y]:=64#> MomotPos[y]-8 <#312
+      31..40  : MomotPos[y]:=64#> MomotPos[y]-4 <#312
       '41-60 is joystick deadband (Y position doesn't change)
-      61..70  : MomotPos[y]:=128#> MomotPos[y]+4 <#650
-      71..80  : MomotPos[y]:=128#> MomotPos[y]+8 <#650
-      81..100 : MomotPos[y]:=128#> MomotPos[y]+16 <#650
+      61..70  : MomotPos[y]:=64#> MomotPos[y]+4 <#312
+      71..80  : MomotPos[y]:=64#> MomotPos[y]+8 <#312
+      81..100 : MomotPos[y]:=64#> MomotPos[y]+16 <#312
 
     if MomotPos[x]<>x_prev                           'Check to see if Mario's x position has changed
       MomotMoving:=true                           'Set the MomotMoving flag to true (which Cog 2 running MarioMotion looks for)
@@ -85,31 +83,19 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     else
       MomotMoving:=false
 
-    if FireFlower==true                             'Only draw the fire flower on the screen if this "flag" variable is true (Note: This is the best way to deal with sprites appearing/dissapearing. Do not set sprites to 0% opacity and thereby waste time printing invisible sprites on your screen!
-      debug(`screen set (`(Question1[0]),`(Question1[1]+32)) sprite (190, 0, 2))
-      if CheckCollision(@MomotPos,@Flower)
-        MomotOpacity:=255                           'If Mario has already collied with Goomba and then touches the flower, he becomes fully opaque again (no longer a ghost)
+
 
             'Sprites's: X position,  Y position   Sprite's: image #,  rotation, scaling, opacity
-    debug(`screen set (`(MomotPos[x]), `(MomotPos[y])) sprite (`(Momot), `(MomotRot), 2, `(MomotOpacity))
+    debug(`screen set (`(MomotPos[x]), `(MomotPos[y])) sprite (`(Momot), `(MomotRot), 3, `(MomotOpacity))
            'Print Mario's bottom sprite on screen
 
-    debug(`screen set (`(Goomba[0]), 96) sprite (252, `(GoombaRot), 2))                                        'Print Goomba sprite on screen
-
-    collision:=CheckCollision(@MomotPos,@Goomba)       'Check for any collisions between the Mario and Goomba bounding boxes (you must use the "at" symbol to send the RAM address of the start of the 4 long variable array for each character). Store the return value of the CheckCollision method (in this case true or false) to the global variable "collision"
-    if collision==true                              'If Mario collided with Goomba
-      MomotOpacity:=64                              ' then make Mario sprites three quarters transparent (i.e., 64/256ths opaque)
-
-    if CheckCollision(@MomotPos,@Question1)==true      'Note for "if" statements in Spin2 "==true" is implied so including it isn't technically necessary, but leaving this in arguably makes your code more readable and it won't make any difference in terms of processing speed.
-      FireFlower:=true
-
-    if CheckCollision(@MomotPos,@Question2)==true
-       Mushroom:=true
-                                     'Note that you can either use the CheckCollision methods return value directly in an "if" statement as demoed here, or store its value to variable as demoed above.
-    if Mushroom==true
-      debug(`screen set (`(Question2[0]),`(Question2[1]+32)) sprite (188, 0, 2))
+    debug(`screen set (400, 198) sprite (132, 1, 4, 255)                                      'Print Goomba sprite on scree
 
                        'Start drawing the Rotunda on each frame
+    collision:=CheckCollision(@MomotPos,@BulletB)       'Check for any collisions between the Mario and Goomba bounding boxes (you must use the "at" symbol to send the RAM address of the start of the 4 long variable array for each character). Store the return value of the CheckCollision method (in this case true or false) to the global variable "collision"
+    if collision==true                              'If Mario collided with Goomba
+      HealthBar:=(HealthBar - 12)
+
 
     if data[6].[4]==0                               'Check the 4th bit of the 6th data byte from the controller, which is the -/select button. If it is pressed (=0 in inverted logic), then call the GamePause method to pause the game
       PauseGame()
@@ -122,13 +108,29 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
       MomotJump()
       waitms(50#> 600/deltax <#333)
 
-    if data[7].[4]==0 and (MomotPunching == false)
+    if data[7].[5]==0 and (MomotPunching == false)
       MomotPunching:=true
       Momot:=100
 
     if MomotPunching
       MomotPunch()
        waitms(50#> 600/deltax <#333)
+
+    if data[7].[3]==0 and (MomotKicking == false)
+      MomotKicking:=true
+      Momot:=100
+
+    if MomotKicking
+      MomotKick()
+       waitms(50#> 600/deltax <#333)
+
+    if data[7].[4]==0
+      MomotBlocking := true
+      Momot:= 100
+
+    if MomotBlocking
+      MomotBlock()
+      waitms(50#> 600/deltax <#333)
 
 
     'It is highly recommended that you include the following code in your game
@@ -173,23 +175,6 @@ pub DebugDisplay()                                  'Use to display variables on
       DisplayDelay:=DisplayDelay+clkfreq/5          'Add another 0.2 second worth of system clock pulses to DisplayDelay time (for the next delay)
 
 
-pub GombaMotion()                    'This is an example of how to use parallel cogs to handle different event timings.
-  repeat                             ' Here Cog 1 changes the global variables GoombaPos and GoombaRot and Cog 0 uses these values to update the game.
-    repeat until Goomba[0]>=800      'Goomba walks back and forth along the x-axis between pixels 300 through 800
-      Goomba[0]:=Goomba[0]+6         'Move Goomba sprite to the right 6 pixels
-      ToggleGoomba()                 'Call the ToggleGoomba method to adjust the sprites rotation
-    repeat until Goomba[0]<=300
-      Goomba[0]:=Goomba[0]-6
-      ToggleGoomba()
-
-pub ToggleGoomba()                   'By rotating the Goomba sprite such that it flips between mirror images, it appears as though it is walking
-  if GoombaRot==0
-    GoombaRot:=1
-    waitms(175)                      'Because this is running on a different cog/processor than the video game's main loop, this pause does not slow the game down at all, whereas if this were all running on Cog 0, the entire game would  pause for 175ms at this point
-  elseif GoombaRot==1
-    GoombaRot:=0
-    waitms(175)
-
 pub MarioMotion()                    'Cycle through Mario's leg sprite images whenever he's moving to make it look like he's running
   repeat
     if MomotMoving==false            'Check to see if Cog 0 has set the MomotMoving flag to be true or false
@@ -202,42 +187,19 @@ pub MarioMotion()                    'Cycle through Mario's leg sprite images wh
       103 : Momot:=100           ' If MarioLegs==105, then set MarioLegs:=101
     waitms(50#> 600/deltax <#333)    'Wait between 33ms - 333ms (speed scaled based on distance moved)
 
-pub QuestionMotion()
-
-  repeat
-    case QuestionMark
-      180 : QuestionMark:=181
-      181 : QuestionMark:=182
-      182 : QuestionMark:=183
-      183 : QuestionMark:=180
-    waitms(300)
 
 pub DefineCollisionAreas()           'Make arrays for each entity's boundary box's coordinate info [x0,y0,width,height], where x0 and y0 are the upper left pixel of the box
                                      'e.g., Mario[x] is x-position of upper left pixel, Mario[y] is y-position of upper left pixel, Mario[width] is Mario's overall height, Mario[height] is Mario's overall width (uncomment lines in CheckCollision to see red bounding boxes)
   MomotPos[x]:=100                      'Starting Mario x position (will probably be overwritten by current joystick pot value soon)
   MomotPos[y]:=128                      'Starting Mario y position (upper left corner of his top half sprite)
-  MomotPos[width]:=64                   'Width of Mario's character (32 since we're displaying the 16x16 sprite image at 2x scale)
-  MomotPos[height]:=64                  'Height of Mario's character (64 since we're displaying two 16x16 sprite images at 2x scale)
+  MomotPos[width]:=96                   'Width of Mario's character (32 since we're displaying the 16x16 sprite image at 2x scale)
+  MomotPos[height]:=96
 
-  Goomba[0]:=800                     'Starting Goomba x position (far right of screen)
-  Goomba[1]:=96                      'Starting Goomba y position
-  Goomba[2]:=32                      'Width of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
-  Goomba[3]:=32                      'Height of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
+  BulletB[0]:=400                     'Starting Goomba x position (far right of screen)
+  BulletB[1]:=198                      'Starting Goomba y position
+  BulletB[2]:=64                      'Width of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
+  BulletB[3]:=64                   'Height of Mario's character (64 since we're displaying two 16x16 sprite images at 2x scale)                     'Height of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
 
-  Question1[0]:=240
-  Question1[1]:=220
-  Question1[2]:=32
-  Question1[3]:=32
-
-  Question2[0]:=432
-  Question2[1]:=220
-  Question2[2]:=32
-  Question2[3]:=32
-
-  Flower[0]:=240
-  Flower[1]:=252
-  Flower[2]:=32
-  Flower[3]:=32
 
   'Add your own bounding box definitions here for other objects and/or shapes with which you want to check collisions. Be sure to declare an array of four longs for each of these definitions in the VAR section!
   'Note that you could make larger arrays for each entity e.g., a 5th index to hold rotation info, a 6th to hold transparency level, etc. Just be sure to allot more space to the variable where it is defined/reserved up top in the "var" section.
@@ -280,49 +242,25 @@ pub PauseGame()                                   'If player presses the Select 
   StartTime:=getct()                              'Re-record current system clock counter (so that the >100ms warning isn't displayed when this frame finishes)
 
 pub DrawBackground() | i,j
-  debug(`screen set 384 352 color $6B8CFF box 768 574)  'Draw a big blue box (768x574 pixels)for the Mario World sky centered at x=384 y=352 (covering everything above the ground)
-                                       'Draw the Rotunda sprite tiles everywhere above the ground
 
-  'Draw the ground
-  repeat i from 0 to 800 step 32
-      debug(`screen set (`(i), 64) sprite (164, 0, 2))
+  repeat i from 0 to 800 step 64
+      debug(`screen set (`(i), 64) sprite (200, 0, 2))
+      debug(`screen set (`(i), 128) sprite (200, 3, 2))
+      debug(`screen set (`(i), 192) sprite (200, 0, 2))
+      debug(`screen set (`(i), 256) sprite (200, 3, 2))
+      debug(`screen set (`(i), 320) sprite (201, 0, 2))
+      debug(`screen set (`(i), 384) sprite (201, 0, 2))
+      debug(`screen set (`(i), 448) sprite (201, 0, 2))
+      debug(`screen set (`(i), 512) sprite (201, 0, 2))
+      debug(`screen set (`(i), 576) sprite (201, 0, 2))
+      debug(`screen set (`(i), 640) sprite (201, 0, 2))
+      debug(`screen set (`(i), 704) sprite (201, 0, 2))
+
+  debug(`screen set 96 576 color $DB1818 box 144 24)
+  debug(`screen set 96 576 color $1BDB18 box HealthBar 24)
 
   debug(`screen set (upper-left_X_coordinate, upper-left_Y_coordinate) sprite (SpriteNumber, Rotation, ScalingFactor, SpriteOpacity))
 
-  'Draw the single cloud
-  debug(`screen set (400,516) sprite(167,0,2))
-
-  '<---Hint: debug(`screen set (upper-left_X_coordinate=400, upper-left_Y_coordinate=516) sprite (SpriteNumber=135, Rotation=0, ScalingFactor=2, Opacity=255(default))
-
-  'Draw the tripple bush
-  debug(`screen set (96,96) sprite(165,0,2))
-  debug(`screen set (143,96) sprite(166,0,2))
-  debug(`screen set (175,96) sprite(166,0,2))
-
-                           '<---Hint: debug(`screen set (upper-left_X_coordinate=96, upper-left_Y_coordinate=96) sprite (SpriteNumber=133, Rotation=0, ScalingFactor=2, Opacity=255(default))
-
-
-  'Draw the tripple cloud
-  debug(`screen set (640, 400) sprite (167, 0, 2))
-  debug(`screen set (688, 400) sprite (168, 0, 2))
-  debug(`screen set (720, 400) sprite (168, 0, 2))
-  'Draw a Hill
-  debug(`screen set (240, 112) sprite (169, 0, 2))
-  debug(`screen set (304, 112) sprite (170, 0, 2))
-  'Draw the little bush
-  debug(`screen set (512, 96) sprite (165, 0, 2))
-
-  'Draw the Pipe
-  debug(`screen set (656, 128) sprite (171, 0, 2))
-
-  'Draw question marks and bricks
-  debug(`screen set (240, 220) sprite (`(QuestionMark), 0, 2))      '<-Question Mark
-  debug(`screen set (400, 220) sprite (194, 0, 2)
-  debug(`screen set (432, 220) sprite (`(QuestionMark), 0, 2)       '<-Question Mark
-  debug(`screen set (464, 220) sprite (194, 0, 2)
-  debug(`screen set (496, 220) sprite (`(QuestionMark), 0, 2)       '<-Question Mark
-  debug(`screen set (528, 220) sprite (194, 0, 2)
-  debug(`screen set (464, 350) sprite (`(QuestionMark), 0, 2)       '<-Question Mark
 
 
 pub ShowInstructions() | i
@@ -399,8 +337,7 @@ pub MomotJump()                                                      'Set MarioL
   case Momot                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
       100 : Momot:=105           ' If MarioLegs==101, then set MarioLegs:=102
       105 : Momot:=106
-        MomotPos[y]:=MomotPos[y]+64
-        waitms(300#> 750/deltax <#750)                                     ' If MarioLegs==102, then set MarioLegs:=103
+        MomotPos[y]:=MomotPos[y]+64                                     ' If MarioLegs==102, then set MarioLegs:=103
       106 : Momot:=107
         MomotPos[y]:=MomotPos[y]-64
       107 : Momot:=100
@@ -425,3 +362,19 @@ pub MomotPunch()
       119 : Momot:= 100
         PunchRight:= true
         MomotPunching := false
+
+pub MomotKick()
+  case Momot
+      100 : Momot:= 122
+      122 : Momot:= 123
+      123 : Momot:= 124
+      124 : Momot:= 125
+      125 : Momot:= 126
+      126 : Momot:= 100
+        MomotKicking:= false
+
+pub MomotBlock()
+  case Momot
+    100 : Momot:= 115
+    115 : Momot:= 100
+      MomotBlocking:=false
