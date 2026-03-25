@@ -59,3 +59,8 @@ The floor tiles are going to have the reflection coming off of the fluorescents.
 ![FloorB](MarkdownMedia/CustomSprites/FloorB%20(2).png)
 
 These can be rotated to get the bottom half of the parallelogram
+
+3/25/26 - Garner Sprites
+
+[Reference for pikmin](https://www.deviantart.com/pikmin789/art/Pikmin-Sprite-Sheet-2-101570656)
+
