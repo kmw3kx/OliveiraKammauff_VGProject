@@ -42,3 +42,20 @@ I'm basing a lot of my ideas about how the game looks and plays based off of Dou
 
 ## Log
 3/23/26 - Bob started up the repo and started planning the design of the game. Hopefully can start looking at some code tomorrow.
+
+3/24/26 - Starting on some of the spritework:
+
+![MechBasement](MarkdownMedia/MechBasementReference.jpg)
+
+![MechFloor1](MarkdownMedia/MechFloor1Reference.jpg)
+
+I'm just thinking about the tile sets that I'd need for this.
+
+The floor tiles are going to have the reflection coming off of the fluorescents. One for the first floor, one for the basement
+
+![Floor1](MarkdownMedia/CustomSprites/Floor1%20(1).png)
+![Floor1](MarkdownMedia/CustomSprites/Floor1%20(2).png)
+![FloorB](MarkdownMedia/CustomSprites/FloorB%20(1).png)
+![FloorB](MarkdownMedia/CustomSprites/FloorB%20(2).png)
+
+These can be rotated to get the bottom half of the parallelogram
