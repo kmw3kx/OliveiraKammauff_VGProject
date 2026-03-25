@@ -59,3 +59,20 @@ The floor tiles are going to have the reflection coming off of the fluorescents.
 ![FloorB](MarkdownMedia/CustomSprites/FloorB%20(2).png)
 
 These can be rotated to get the bottom half of the parallelogram
+
+I ended up going back on the design, so now this is the floor tile:
+
+![Floor.png](MarkdownMedia/CustomSprites/floor.png)
+
+...which can be rotated in order to have it tile effectively!
+
+3/25/26 - Garner Sprites
+
+[Reference for pikmin](https://www.deviantart.com/pikmin789/art/Pikmin-Sprite-Sheet-2-101570656)
+
+I started out by making all of these pikmin sprites!
+
+![pikmin.png](MarkdownMedia/CustomSprites/pikmin.png)
+
+These should cover them walking, attacking, and equipping the fabled monocle
+
