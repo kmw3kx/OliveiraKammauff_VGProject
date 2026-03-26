@@ -6,14 +6,16 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
   RJoyXMin=4, RJoyXMax=252, RJoyYMin=4, RJoyYMax=252, LJoyXMin=2, LJoyXMax=254, LJoyYMin=4, LJoyYMax=252 'Your Wii Controller probably uses these default range values, but not all of them have been tested. You can use the Wii Controller Tester program to verify exactly what values your controller outputs
   #0, x, y, width, height             '#0 resets the automatic constant counter number to 0 (just in case it has been changed by preceding unspecified constants), so here x=0, y=1, width=2, height=3 which is convenient for collision definitions arrays e.g., Mario[x] is the same as Mario[0], Mario[y] is the same as Mario[1], etc. (and for most people, it's easier to remember that the x index holds the x position value rather than the 0th index holds the x value!-)
   FrameTime=75                        'Set your target frame duration/period in milliseconds (i.e., frame rate). This value should probably be between around 50-100ms, i.e. the screen should be cleared and completely redrawn every 50-100ms. If you set your frame rate/frequency too high (i.e., set this FrameTime/period value too low) and don't have at least around 15ms of pause time between each loop, then the USB interface through which the P2 talks to your computer may get clobberred and bogged down, which can result in strange behavior such as the controller data seeming to lag way behind, appearing to make characters move on their own or long after the controls were pressed.
-  CollisionDebugMode=true            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
+  CollisionDebugMode=false            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
 
+  SecondPlayer = false
 obj
   sprites : "OliveiraKammauffSprites_v2"    'Include 112#methods from your external "YourNameSprites" object. Of course, you should change the "YourName" part to be your actual name (LastFirst) for your unique sprite data loading object. Both this external object and your game file will be needed to play your game (so be sure to submit both!).
-  i2c     : "jm_i2c"                  'Include methods from jm_i2c bus driver so that the Wii Controller can communicate with the P2 chip over an I2C interface
+  i2c[2]     : "jm_i2c"                  'Include methods from jm_i2c bus driver so that the Wii Controller can communicate with the P2 chip over an I2C interface
 
 var                                   'Declare global variables in this block, which can all be read or changed by any of the eight cogs at any time
-  byte data[8]                        'This array of 8 bytes is used to store data sent to the P2 chip from the Wii Classic Controller Pro. Your game must include this variable delcaration along with the SetupController and ReadController methods.
+  byte dataP1[8]                        'This array of 8 bytes is used to store data sent to the P2 chip from the Wii Classic Controller Pro. Your game must include this variable delcaration along with the SetupController and ReadController methods.
+  byte dataP2[8]
   long MomotPos[4], BulletB[4]            'Use arrays of 4 longs like these to keep track of all of your characters' data: upper-left pixel's x-position, upper-left pixel's y-position, overall width, overall height. See the DefineCollisionAreas method below.
   long deltax, x_prev, y_prev, LJoyX, LJoyY, collision, HealthBar
   long Momot, MomotRot, MomotMoving, MomotOpacity, MomotJumping, MomotPunching, PunchRight, MomotKicking, MomotBlocking                                    '
@@ -24,10 +26,31 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
   debug(`plot screen pos 100 0 size 768 640 backcolor black update) 'Create the main 768x640 pixel plot window for the game called "screen"
   debug(`screen set 400 330 blue text 50 'Loading sprites...')
   debug(`screen update)               'Refresh the screen in order to display the "Loading sprites" message. Note: You must always run an "update" command in order to actually see any changes you make to the debug data! In other words, calling other "debug" commands only changes the data for the next time that the screen is updated. Other debug commands do NOT automatically update the screen!!!
-  SetupController(1)                   'Call the SetupController method (below) that sets up the I2C interface between the P2 and the Wii Controller
-  ReadController(1)                    'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
+  SetupController(0)                   'Call the SetupController method (below) that sets up the I2C interface between the P2 and the Wii Controller
+
+  'start up Cogs: 0: already in use-main game loop. (copilot-inspired allocation)
+    'Applies controller input (from shared memory)
+    'Updates game state
+    'Handles collisions, scoring, movement
+    'Writes positions/sprites into a shared buffer for the video cog
+  ' Cog 1: P1 Controller Input
+  'cogspin(1,MarioMotion(),@Stack1)
+  cogspin(1, ReadConLoop(), @Stack1)
+
+  ' Cog 2: P2 Controller Input
+  'cogspin(2, DrawBackground(),@Stack2)
+  if SecondPlayer == true
+    SetupController(1)
+    'cogspin(2, ReadConLoop(1), @Stack2)
+  else 'if no player2, initialize dataP2 = all 1's (i.e. no buttons pressed)
+    repeat i from 0 to 7
+      dataP2[i] := $FF      ' all 1's (idle state)
+
   sprites.LoadSprites()               'Run the LoadSprites method from within your own Sprites object (a separate file) to upload all of your sprite data from the P2 chip's RAM into your PC's RAM
+
   debug(`screen clear update)         'Erase everything on the plot screen and update the screen (to erase the "Loading Sprites" text)
+
+
   ShowInstructions()                  'Display the instructions by overlaying a new debug text terminal over top of the video game's plot window
 
   DefineCollisionAreas()              'Call the method that sets up the rectangles around objects that will be used to detect collisions                   'Start out with the EasterEgg mode disabled (i.e, just drawing the blue sky box as the background)
@@ -36,9 +59,17 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
   MomotOpacity:=255
   HealthBar:=144                               'Start with Mario fully opaque (the 4th parameter in a debug sprite command adjusts transparency between 255 (default) and 0, which is fully transparent/invisible
   PunchRight := true
-  cogspin(1,MarioMotion(),@Stack1)
-  cogspin(2, DrawBackground(),@Stack2)                'Start up Cog 1 and tell it to run the MarioMotion method in parallel to what's already running on Cog 0
+
+
+  ' Cog 3: NPC Behavior
+  ' Cog 4: Sprite Rendering/Drawing
+  'cogspin(4, DrawGame(), @Stack4)
+  ' Cog 5: Audio (empty for now)
+  ' Cog 6: Spare/Not Used
+  ' Cog 7: DebugDisp
   cogspin(7,DebugDisplay(),@Stack7)               'Start up Cog 7 and tell it to run the DebugDisplay method in parallel to what's going on on all of the other cogs (Note: You are not required to have this feature in your final game i.e., if you need to use Cog 7 for something else)
+
+  '
   Momot:=100
 
   repeat                                          'This is the game's main repeat loop. Ideally all debug plot/screen commands should be in this loop (and the methods it calls). So all debug plot/screen commands should only be called by Cog 0
@@ -51,10 +82,10 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     x_prev:=MomotPos[x]                              'Store Mario's previous x position
     y_prev:=MomotPos[y]                              'Store Mario's previous y position
 
-    ReadController(1)                              'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
+    'ReadController(1)                              'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
 
-    LJoyX:=0#>(data[0]-LJoyXMin)*100/(LJoyXMax-LJoyXMin)<#100   'Scale the left joystick's analog X and Y ranges to be between 0-100
-    LJoyY:=0#>(data[2]-LJoyYMin)*100/(LJoyYMax-LJoyYMin)<#100   'Note that enclosing a computation or result between #> and <# in Spin2 limits the minimum and maximum value (in this case to beween 0 and 100)
+    LJoyX:=0#>(dataP1[0]-LJoyXMin)*100/(LJoyXMax-LJoyXMin)<#100   'Scale the left joystick's analog X and Y ranges to be between 0-100
+    LJoyY:=0#>(dataP1[2]-LJoyYMin)*100/(LJoyYMax-LJoyYMin)<#100   'Note that enclosing a computation or result between #> and <# in Spin2 limits the minimum and maximum value (in this case to beween 0 and 100)
 
     case_fast LJoyX                               'If the range of values is you're checking is less than 256, you can use case_fast instead of the normal case to shave ~10.64 microseconds off your main loop time. Be careful NOT to use case_fast if the max value expands beyond 256 from the min, and just use regular "case" instead!!!
        0..20  : MomotPos[x]:=0#> MomotPos[x]-16 <#740   'Note: You may need to tweak the deadband of your joystick to more or less than 40-60
@@ -97,10 +128,11 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
       HealthBar:=(HealthBar - 12)
 
 
-    if data[6].[4]==0                               'Check the 4th bit of the 6th data byte from the controller, which is the -/select button. If it is pressed (=0 in inverted logic), then call the GamePause method to pause the game
-      PauseGame()
-
-    if (data[7].[6] == 0) and (MomotJumping == false)
+    if dataP1[6].[4]==0                               'Check the 4th bit of the 6th data byte from the controller, which is the -/select button. If it is pressed (=0 in inverted logic), then call the GamePause method to pause the game
+      PauseGame(0)
+    if dataP2[6].[4]==0                               'Check the 4th bit of the 6th data byte from the controller, which is the -/select button. If it is pressed (=0 in inverted logic), then call the GamePause method to pause the game
+      PauseGame(1)
+    if (dataP1[7].[6] == 0) and (MomotJumping == false)
       MomotJumping := true                              'AI Helped with the Jumping Logic, specifically on how to make it one motion with one press of B'
       Momot := 100
 
@@ -108,7 +140,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
       MomotJump()
       waitms(50#> 600/deltax <#333)
 
-    if data[7].[5]==0 and (MomotPunching == false)
+    if dataP1[7].[5]==0 and (MomotPunching == false)
       MomotPunching:=true
       Momot:=100
 
@@ -116,7 +148,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
       MomotPunch()
        waitms(50#> 600/deltax <#333)
 
-    if data[7].[3]==0 and (MomotKicking == false)
+    if dataP1[7].[3]==0 and (MomotKicking == false)
       MomotKicking:=true
       Momot:=100
 
@@ -124,7 +156,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
       MomotKick()
        waitms(50#> 600/deltax <#333)
 
-    if data[7].[4]==0
+    if dataP1[7].[4]==0
       MomotBlocking := true
       Momot:= 100
 
@@ -158,13 +190,13 @@ pub DebugDisplay()                                  'Use to display variables on
       debug(`term1 'LoopTime = `(LoopTime)' 'µs',10)
       debug(`term1 'Frame Wait Time = `(FrameWaitTime)' 'µs',10)
 
-      debug(`term1 'Right Trigger = `(data[5])',10)
+      debug(`term1 'Right Trigger = `(dataP1[5])',10)
 
-      if data[7].[4]==0                             'Check the 4th bit of the 7th data byte from the controller, which is the "a" button
+      if dataP1[7].[4]==0                             'Check the 4th bit of the 7th dataP1 byte from the controller, which is the "a" button
         debug(`term1 'A button IS Pressed',10)
       else
         debug(`term1 'A button NOT Pressed',10)
-      if data[7].[2]==0                             'Check the 2nd bit of the 7th data byte from the controller, which is the "ZR" button
+      if dataP1[7].[2]==0                             'Check the 2nd bit of the 7th dataP1 byte from the controller, which is the "ZR" button
         debug(`term1 'Right Z button IS Pressed',10)
       else
         debug(`term1 'Right Z button NOT Pressed',10)
@@ -230,15 +262,23 @@ pub CheckCollision(Box1address,Box2address) : CollisionState      'CREDIT: This 
     if CollisionState==true
       debug(`screen set 400 330 red text 50 'Collision!!!')
 
-pub PauseGame()                                   'If player presses the Select button on the controller, the game should pause until the player presses Select again. Note that this only pauses your main game loop on Cog 0. Other cogs will still be running as usual (which could continue to change some global variables).
+pub PauseGame(controller)                                   'If player presses the Select button on the controller, the game should pause until the player presses Select again. Note that this only pauses your main game loop on Cog 0. Other cogs will still be running as usual (which could continue to change some global variables).
   debug(`screen set 400 330 red text 50 '<PAUSED>')
-  debug(`screen update `dly(1000))                'Force game window to update (in order to display the "<PAUSED>" text) then wait/delay 1 second
-  ReadController(1)                                'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
-  repeat until data[6].[4]==0                     'Wait for the player to press the + button a second time to un-pause the game
-    ReadController(1)                              'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
-    waitms(100)                                   'Slow things down during this paused condition while just waiting for the usert to un-pause the game
-  repeat until data[6].[4]==1                     'Wait for the player to release the + button (otherwise another pause condition may be immediately initiated again)
-    ReadController(1)                              'Update the controller button data
+  debug(`screen update `dly(1000))                   {Force game window to update (in order to display the "<PAUSED>" text) then wait/delay 1 second}
+
+  'ReadController(controller)                                'Jump down to the ReadController method to read/update the controller's current user input dataP1 via the I2C interface
+  if controller == 0            'Whoever Paused has to Unpause
+    repeat until dataP1[6].[4]==0                     'Wait for the player to press the + button a second time to un-pause the game
+      waitms(100)                                   'Slow things down during this paused condition while just waiting for the usert to un-pause the game
+    repeat until dataP1[6].[4]==1                     'Wait for the player to release the + button (otherwise another pause condition may be immediately initiated again)
+      waitms(100)
+
+  elseif controller == 1
+    repeat until dataP2[6].[4]==0                     'Wait for the player to press the + button a second time to un-pause the game
+      waitms(100)                                   'Slow things down during this paused condition while just waiting for the usert to un-pause the game
+    repeat until dataP2[6].[4]==1                     'Wait for the player to release the + button (otherwise another pause condition may be immediately initiated again)
+      waitms(100)
+
   StartTime:=getct()                              'Re-record current system clock counter (so that the >100ms warning isn't displayed when this frame finishes)
 
 pub DrawBackground() | i,j
@@ -270,8 +310,7 @@ pub ShowInstructions() | i
     PrintStr(@@StringAddress[i])                 'Print string who's starting address is at the specified memory location (Note: You must use two @ symbols to pass the address of a string like this!)
   debug(`Instructions 2 15 3 10)                 'Set cursor's column to 30 and row to be 10 (2=set column command, 3=set row command -> see Text Terminal section of Spin2 Programming documnent)
   PrintStr(@string2)                             'Print string who's starting address is at the memory location named string2
-  repeat until data[6].[2]==0                    'Wait until Start button is pressed on the Wii controller
-    ReadController(1)                             'Update data bytes from the Wii Controller
+  repeat until dataP1[6].[2]==0 or dataP2[6].[2]==0                   'Wait until Start button is pressed on the Wii controller
     waitms(100)                                  'No need to do this too quickly as we're dealing with human-scale speeds and don't want to clober the I2C interface or waste electricity
   debug(`Instructions clear)                     'Clear entire terminal window and reset cursor to home (upper left)
   debug(`Instructions 2 33 3 5)                  'Set cursor's column to 33 and row to be 5
@@ -297,50 +336,60 @@ string3       byte "HAVE FUN!!!",0
 StringAddress long @string0, @string1, @string2, @string3        'Make a list/array that holds the addresses of these strings to make it easy to display them in a "for" loop or other scheme
 
 con 'Your game must include the following two methods in order to use the Wii Classic Controller Pro
-pub SetupController(controller)               ''Set up the I2C interface through which the Wii Classic Controller Pro and the P2 chip communicate
-  if controller==0
-    i2c[controller].setup(10, 11, 400, i2c.PU_1K5)  'Set up I2C driver using the clock (Pin 0) and Data (Pin 1) pins' built-in 1.5K Ohm pull-up resistors
-  elseif controller==1
-    i2c[controller].setup(12, 13, 400, i2c.PU_1K5)
-  i2c[controller].start()                       'Initialize I2C interface
-  i2c[controller].write($A4)                    'Set address to $A400F0
-  i2c[controller].write($F0)
-  i2c[controller].write($55)                    'Write $55 to address $A4F0, which initializes nunchuck without encryption
-  i2c[controller].stop()
+pub SetupController(controller)
+  if controller == 0
+    i2c[0].setup(10, 11, 400, i2c.PU_1K5)
+  elseif controller == 1
+    i2c[1].setup(12, 13, 400, i2c.PU_1K5)
+
   i2c[controller].start()
-  i2c[controller].write($A4)                    'Set address to $A4FB
+  i2c[controller].write($A4)
+  i2c[controller].write($F0)
+  i2c[controller].write($55)
+  i2c[controller].stop()
+
+  i2c[controller].start()
+  i2c[controller].write($A4)
   i2c[controller].write($FB)
-  i2c[controller].write($00)                    'Write $00 to address $A4FB,
+  i2c[controller].write($00)
   i2c[controller].stop()
   waitus(150)
 
   i2c[controller].start()
-  i2c[controller].write($A4)                    'Set address to $A4FE
+  i2c[controller].write($A4)
   i2c[controller].write($FE)
-  i2c[controller].write($03)                    'Write $55 to address $A400F0, which sets data format mode to $03
+  i2c[controller].write($03)
   i2c[controller].stop()
   waitus(150)
+
+  ' REQUIRED dummy read         Copilot corrected
+  ReadController(controller)
 
 pub ReadController(controller) | i            ''Have the P2 chip get the 8 bytes of data (with the button and joystick input states) from the Wii Classic Controller Pro via the I2C interface
   i2c[controller].start()                       'Send Conversion Command (to get all sensor data read and stored into the 8-byte data registers)
   i2c[controller].write($A4)                    'Set address to $A4 (the writing address)
   i2c[controller].write($00)
   i2c[controller].stop()
-  waitus(250)                       'The max speed for standard I2C protocol is 400kHz, so need to slow things down a little (may need to experiment with this depending on your controller and main loop time)
+  waitms(1)                       'The max speed for standard I2C protocol is 400kHz, so need to slow things down a little (may need to experiment with this depending on your controller and main loop time)
+
 
   i2c[controller].start()
   i2c[controller].write($A5)                    'Set address to $A5 (the start of where controller's input data is stored and read from)
   if controller == 0
     repeat i from 0 to 6
-      data0[i]:=i2c[controller].read(0)            'Read in byte, store it to data array, then send 0=ACK
-    data0[7]:=i2c[controller].read(1)              'Read in byte, store it to data array, then send 1=NAK (after the last byte)
+      dataP1[i]:=i2c[controller].read(0)            'Read in byte, store it to data array, then send 0=ACK
+    dataP1[7]:=i2c[controller].read(1)              'Read in byte, store it to data array, then send 1=NAK (after the last byte)
   elseif controller==1
     repeat i from 0 to 6
-      data1[i]:=i2c[controller].read(0)            'Read in byte, store it to data array, then send 0=ACK
-    data1[7]:=i2c[controller].read(1)              'Read in byte, store it to data array, then send 1=NAK (after the last byte)
+      dataP2[i]:=i2c[controller].read(0)            'Read in byte, store it to data array, then send 0=ACK
+    dataP2[7]:=i2c[controller].read(1)              'Read in byte, store it to data array, then send 1=NAK (after the last byte)
   i2c[controller].stop()
-
-
+pub ReadConLoop()
+  repeat
+    ReadController(0)
+    if SecondPlayer == true
+      ReadController(0)
+    waitms(1)
 pub MomotJump()                                                      'Set MarioLegs to be the stationary leg sprite
   case Momot                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
       100 : Momot:=105           ' If MarioLegs==101, then set MarioLegs:=102

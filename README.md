@@ -76,3 +76,6 @@ I started out by making all of these pikmin sprites!
 
 These should cover them walking, attacking, and equipping the fabled monocle
 
+I also started work on the code for the co-op feature. I feel like I'm really close, but now it's not reading the values from the first controller. I feel like once it reads from one, it will also read from the other. The sprite rendering is now moved to it's own cog, so that at least works. I dunno. It's too late for this, and my gf is gonna get mad at me for being up so late, so I think it's time to commit to my branch and call it a night.
+
+
