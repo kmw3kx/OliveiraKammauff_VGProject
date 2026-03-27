@@ -57,8 +57,11 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     deltax:=abs(MomotPos[x]-x_prev)                  'Difference between current x and previous x position (how far character has moved since last main loop iteration)
     x_prev:=MomotPos[x]                              'Store Mario's previous x position
     y_prev:=MomotPos[y]                              'Store Mario's previous y position
-
+    {Get Controller Data}
     ReadController()                              'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
+    {Update Game State}
+    if data[6].[4]==0                               'Check the 4th bit of the 6th data byte from the controller, which is the -/select button. If it is pressed (=0 in inverted logic), then call the GamePause method to pause the game
+      PauseGame()
 
     LJoyX:=0#>(data[0]-LJoyXMin)*100/(LJoyXMax-LJoyXMin)<#100   'Scale the left joystick's analog X and Y ranges to be between 0-100
     LJoyY:=0#>(data[2]-LJoyYMin)*100/(LJoyYMax-LJoyYMin)<#100   'Note that enclosing a computation or result between #> and <# in Spin2 limits the minimum and maximum value (in this case to beween 0 and 100)
@@ -92,6 +95,10 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
       81..100 : MomotPos[y]:=64#> MomotPos[y]+16 <#312
         HitBox[y]:=64#> HitBox[y]+16 <#312
 
+
+
+    {Momot State}
+
     if MomotPos[x]<>x_prev
       MomotMoving:=true
       if MomotPos[x]>x_prev
@@ -101,44 +108,6 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
         MomotMoving:=true
     else
       MomotMoving:=false
-
-    {DRAWING SPRITES} {
-            'Sprites's: X position,  Y position   Sprite's: image #,  rotation, scaling, opacity
-    debug(`screen set (`(MomotPos[x]), `(MomotPos[y])) sprite (`(Momot), `(MomotRot), 3, `(MomotOpacity))
-           'Print Mario's bottom sprite on screen
-
-    if (BulletHealth > 16)
-      debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
-
-
-    if (BulletHealth < 16)
-      if (HealthBoostGranted == false)
-        debug(`screen set 500, 250) sprite (133, 0, 3, 255))
-     }
-    {Collision Check}
-
-    if (BulletHealth < 16 and HealthBoostGranted == false)
-      if CheckCollision(@MomotPos,@HealthBoost) and MomotPunching
-        HealthBar:=(HealthBar + 50)
-        if HealthBar>144
-          HealthBar:=144
-        HealthBoostGranted:=true
-
-
-    if(BulletHealth > 16)
-      collision:=CheckCollision(@HitBox,@BulletB)
-      if collision==true
-        if MomotBlocking == false
-          HealthBar:=(HealthBar - 2)
-    if(BulletHealth > 16)
-      if CheckCollision(@MomotPos,@BulletB)
-        if MomotPunching
-          BulletHealth:=(BulletHealth - 15)
-        if MomotKicking
-          BulletHealth:=(BulletHealth - 30)
-
-    if data[6].[4]==0                               'Check the 4th bit of the 6th data byte from the controller, which is the -/select button. If it is pressed (=0 in inverted logic), then call the GamePause method to pause the game
-      PauseGame()
 
     if (data[7].[6] == 0) and (MomotJumping == false)
       MomotJumping := true                              'AI Helped with the Jumping Logic, specifically on how to make it one motion with one press of B'
@@ -172,18 +141,53 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
       MomotBlock()
       waitms(50#> 600/deltax <#333)
 
+    {DRAWING SPRITES} {
+            'Sprites's: X position,  Y position   Sprite's: image #,  rotation, scaling, opacity
+    debug(`screen set (`(MomotPos[x]), `(MomotPos[y])) sprite (`(Momot), `(MomotRot), 3, `(MomotOpacity))
+           'Print Mario's bottom sprite on screen
+
+    if (BulletHealth > 16)
+      debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
 
 
-    'It is highly recommended that you include the following code in your game
-    FrameRate:=FrameTime*300_000 - abs(StartTime-getct())
-    'Calculate the number of clock pulses remaining (that you need to pause for) to hit the target frame rate (specified by your FrameTime constant)             '
-    waitct(FrameRate+getct())
-    {Force game window to update then wait/delay 60ms
-     Hint: Experiment with a delay of 0-100ms to get your total loop time (
-     the time it takes to draw/redraw each frame/image) to be around 50-150 milliseconds.
-     Just experiment with what works best for your final game to run smoothly.}
+    if (BulletHealth < 16)
+      if (HealthBoostGranted == false)
+        debug(`screen set 500, 250) sprite (133, 0, 3, 255))
+     }
     DrawGame()
-    RawLoopTime:=abs(StartTime-getct())             'Record total loop time (not counting debug delay below) units=1/300_000_000=3.3333 nanoseconds
+    {Collision Check}
+
+    if (BulletHealth < 16 and HealthBoostGranted == false)
+      if CheckCollision(@MomotPos,@HealthBoost) and MomotPunching
+        HealthBar:=(HealthBar + 50)
+        if HealthBar>144
+          HealthBar:=144
+        HealthBoostGranted:=true
+
+
+    if(BulletHealth > 16)
+      collision:=CheckCollision(@HitBox,@BulletB)
+      if collision==true
+        if MomotBlocking == false
+          HealthBar:=(HealthBar - 2)
+    if(BulletHealth > 16)
+      if CheckCollision(@MomotPos,@BulletB)
+        if MomotPunching
+          BulletHealth:=(BulletHealth - 15)
+        if MomotKicking
+          BulletHealth:=(BulletHealth - 30)
+
+
+
+    ''It is highly recommended that you include the following code in your game
+
+      FrameRate:=FrameTime*300_000 - abs(StartTime-getct())   'Calculate the number of clock pulses remaining (that you need to pause for) to hit the target frame rate (specified by your FrameTime constant)
+      if FrameRate<=0                                 'If the loop has taken more than the target frame time, display warning message. If you see this message, you need to increase the value of your FrameTime constant or decrease the amount of code (especially debug commands) running in your game's main repeat loop
+        debug(`screen set 384 600 red text 20 'Frame loop took longer than 100ms!!!')              '
+      waitct(FrameRate+getct())
+      debug(`screen update)                           'Force game window to update then wait/delay 60ms Hint: Experiment with a delay of 0-100ms to get your total loop time (the time it takes to draw/redraw each frame/image) to be around 50-150 milliseconds. Just experiment with what works best for your final game to run smoothly.
+      RawLoopTime:=abs(StartTime-getct())             'Record total loop time (not counting debug delay below) units=1/300_000_000=3.3333 nanoseconds
+
 
 pub DebugDisplay()                                  'Use to display variables on the screen (Note: You could put this onto a separate cog if you need for your main game repeat loop on Cog 0 to run faster)
   debug(`term term1 pos 867 0 size 28 12 textsize 18 color cyan)    'Create terminal window to display variables to help with debugging or to display a score
@@ -302,10 +306,12 @@ pub DrawGame()                  'Responsible for rendering the sprites to the de
 
     DrawActors()
     'waitct(FrameRate+getct())  'If trying to run on separate cog
+
+    {
     if FrameRate<=0                                 'If the loop has taken more than the target frame time, display warning message. If you see this message, you need to increase the value of your FrameTime constant or decrease the amount of code (especially debug commands) running in your game's main repeat loop
       debug(`screen set 384 600 red text 20 'Frame loop took longer than 100ms!!!')
     debug(`screen update)
-
+    }
     'It is highly recommended that you include the following code in your game
        {  Might Keep this in main game loop
       FrameRate:=FrameTime*300_000 - abs(StartTime-getct())   'Calculate the number of clock pulses remaining (that you need to pause for) to hit the target frame rate (specified by your FrameTime constant)
