@@ -6,7 +6,7 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
   RJoyXMin=4, RJoyXMax=252, RJoyYMin=4, RJoyYMax=252, LJoyXMin=2, LJoyXMax=254, LJoyYMin=4, LJoyYMax=252 'Your Wii Controller probably uses these default range values, but not all of them have been tested. You can use the Wii Controller Tester program to verify exactly what values your controller outputs
   #0, x, y, width, height             '#0 resets the automatic constant counter number to 0 (just in case it has been changed by preceding unspecified constants), so here x=0, y=1, width=2, height=3 which is convenient for collision definitions arrays e.g., Mario[x] is the same as Mario[0], Mario[y] is the same as Mario[1], etc. (and for most people, it's easier to remember that the x index holds the x position value rather than the 0th index holds the x value!-)
   FrameTime=75                        'Set your target frame duration/period in milliseconds (i.e., frame rate). This value should probably be between around 50-100ms, i.e. the screen should be cleared and completely redrawn every 50-100ms. If you set your frame rate/frequency too high (i.e., set this FrameTime/period value too low) and don't have at least around 15ms of pause time between each loop, then the USB interface through which the P2 talks to your computer may get clobberred and bogged down, which can result in strange behavior such as the controller data seeming to lag way behind, appearing to make characters move on their own or long after the controls were pressed.
-  CollisionDebugMode=true            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
+  CollisionDebugMode=false            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
 
 obj
   sprites : "OliveiraKammauffSprites_v2"    'Include 112#methods from your external "YourNameSprites" object. Of course, you should change the "YourName" part to be your actual name (LastFirst) for your unique sprite data loading object. Both this external object and your game file will be needed to play your game (so be sure to submit both!).
@@ -41,17 +41,19 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
   PunchRight := true
   HealthBoostGranted := false
   cogspin(1,MarioMotion(),@Stack1)
-  cogspin(2, DrawBackground(),@Stack2)
+  'cogspin(2, DrawGame(),@Stack2)                       'Frame rate not good; run in main loop
   cogspin(3, EnemyMotion(),@Stack3)                'Start up Cog 1 and tell it to run the MarioMotion method in parallel to what's already running on Cog 0
   cogspin(7,DebugDisplay(),@Stack7)               'Start up Cog 7 and tell it to run the DebugDisplay method in parallel to what's going on on all of the other cogs (Note: You are not required to have this feature in your final game i.e., if you need to use Cog 7 for something else)
   Momot:=100
-
+  'DrawBackground()
   repeat                                          'This is the game's main repeat loop. Ideally all debug plot/screen commands should be in this loop (and the methods it calls). So all debug plot/screen commands should only be called by Cog 0
     StartTime:=getct()                            'Record current system clock counter value to know when this iteration of the main game loop starts
-    debug(`screen clear)                          'Erase everything on the screen. Note: If you draw/redraw things over the entire screen (as the DrawBackground method does in this demo), then this statement is not necessary. You also may want to keep (i.e. not clear and redraw every frame) certain parts of your background that a character will never move on top of (to save time in each iteration of your main game loop)
-
-    DrawBackground()                              'Call the DrawBackgroung method, which redraws the entire screen's background shapes and sprites, then return to this line of code
-
+    'debug(`screen clear)
+    {Erase everything on the screen. Note: If you draw/redraw things over the entire screen
+    (as the DrawBackground method does in this demo), then this statement is not necessary.
+    You also may want to keep (i.e. not clear and redraw every frame) certain parts of your
+    background that a character will never move on top of (to save time in each iteration of your main game loop)
+     }
     deltax:=abs(MomotPos[x]-x_prev)                  'Difference between current x and previous x position (how far character has moved since last main loop iteration)
     x_prev:=MomotPos[x]                              'Store Mario's previous x position
     y_prev:=MomotPos[y]                              'Store Mario's previous y position
@@ -100,6 +102,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     else
       MomotMoving:=false
 
+    {DRAWING SPRITES} {
             'Sprites's: X position,  Y position   Sprite's: image #,  rotation, scaling, opacity
     debug(`screen set (`(MomotPos[x]), `(MomotPos[y])) sprite (`(Momot), `(MomotRot), 3, `(MomotOpacity))
            'Print Mario's bottom sprite on screen
@@ -111,6 +114,8 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     if (BulletHealth < 16)
       if (HealthBoostGranted == false)
         debug(`screen set 500, 250) sprite (133, 0, 3, 255))
+     }
+    {Collision Check}
 
     if (BulletHealth < 16 and HealthBoostGranted == false)
       if CheckCollision(@MomotPos,@HealthBoost) and MomotPunching
@@ -168,12 +173,16 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
       waitms(50#> 600/deltax <#333)
 
 
+
     'It is highly recommended that you include the following code in your game
-    FrameRate:=FrameTime*300_000 - abs(StartTime-getct())   'Calculate the number of clock pulses remaining (that you need to pause for) to hit the target frame rate (specified by your FrameTime constant)
-    if FrameRate<=0                                 'If the loop has taken more than the target frame time, display warning message. If you see this message, you need to increase the value of your FrameTime constant or decrease the amount of code (especially debug commands) running in your game's main repeat loop
-      debug(`screen set 384 600 red text 20 'Frame loop took longer than 100ms!!!')              '
+    FrameRate:=FrameTime*300_000 - abs(StartTime-getct())
+    'Calculate the number of clock pulses remaining (that you need to pause for) to hit the target frame rate (specified by your FrameTime constant)             '
     waitct(FrameRate+getct())
-    debug(`screen update)                           'Force game window to update then wait/delay 60ms Hint: Experiment with a delay of 0-100ms to get your total loop time (the time it takes to draw/redraw each frame/image) to be around 50-150 milliseconds. Just experiment with what works best for your final game to run smoothly.
+    {Force game window to update then wait/delay 60ms
+     Hint: Experiment with a delay of 0-100ms to get your total loop time (
+     the time it takes to draw/redraw each frame/image) to be around 50-150 milliseconds.
+     Just experiment with what works best for your final game to run smoothly.}
+    DrawGame()
     RawLoopTime:=abs(StartTime-getct())             'Record total loop time (not counting debug delay below) units=1/300_000_000=3.3333 nanoseconds
 
 pub DebugDisplay()                                  'Use to display variables on the screen (Note: You could put this onto a separate cog if you need for your main game repeat loop on Cog 0 to run faster)
@@ -286,6 +295,26 @@ pub PauseGame()                                   'If player presses the Select 
     ReadController()                              'Update the controller button data
   StartTime:=getct()                              'Re-record current system clock counter (so that the >100ms warning isn't displayed when this frame finishes)
 
+
+pub DrawGame()                  'Responsible for rendering the sprites to the debug screen so that the game is visible
+  'repeat 'If trying to run on separate cog
+    DrawBackground()
+
+    DrawActors()
+    'waitct(FrameRate+getct())  'If trying to run on separate cog
+    if FrameRate<=0                                 'If the loop has taken more than the target frame time, display warning message. If you see this message, you need to increase the value of your FrameTime constant or decrease the amount of code (especially debug commands) running in your game's main repeat loop
+      debug(`screen set 384 600 red text 20 'Frame loop took longer than 100ms!!!')
+    debug(`screen update)
+
+    'It is highly recommended that you include the following code in your game
+       {  Might Keep this in main game loop
+      FrameRate:=FrameTime*300_000 - abs(StartTime-getct())   'Calculate the number of clock pulses remaining (that you need to pause for) to hit the target frame rate (specified by your FrameTime constant)
+      if FrameRate<=0                                 'If the loop has taken more than the target frame time, display warning message. If you see this message, you need to increase the value of your FrameTime constant or decrease the amount of code (especially debug commands) running in your game's main repeat loop
+        debug(`screen set 384 600 red text 20 'Frame loop took longer than 100ms!!!')              '
+      waitct(FrameRate+getct())
+      debug(`screen update)                           'Force game window to update then wait/delay 60ms Hint: Experiment with a delay of 0-100ms to get your total loop time (the time it takes to draw/redraw each frame/image) to be around 50-150 milliseconds. Just experiment with what works best for your final game to run smoothly.
+      RawLoopTime:=abs(StartTime-getct())             'Record total loop time (not counting debug delay below) units=1/300_000_000=3.3333 nanoseconds
+      }
 pub DrawBackground() | i,j
 
   repeat i from 0 to 800 step 64
@@ -306,6 +335,20 @@ pub DrawBackground() | i,j
 
   debug(`screen set (upper-left_X_coordinate, upper-left_Y_coordinate) sprite (SpriteNumber, Rotation, ScalingFactor, SpriteOpacity))
 
+
+pub DrawActors()                'Draw all of the Characters on screen that change (players, enemies, items, health status)
+    {DRAWING SPRITES}
+            'Sprites's: X position,  Y position   Sprite's: image #,  rotation, scaling, opacity
+    debug(`screen set (`(MomotPos[x]), `(MomotPos[y])) sprite (`(Momot), `(MomotRot), 3, `(MomotOpacity))
+           'Print Momot's bottom sprite on screen
+
+    if (BulletHealth > 16)
+      debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
+
+
+    if (BulletHealth < 16)
+      if (HealthBoostGranted == false)
+        debug(`screen set 500, 250) sprite (133, 0, 3, 255))
 
 
 pub ShowInstructions() | i

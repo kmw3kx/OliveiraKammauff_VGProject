@@ -76,3 +76,11 @@ I started out by making all of these pikmin sprites!
 
 These should cover them walking, attacking, and equipping the fabled monocle
 
+3/27/26 - Another day another dollar, I think. I'll import the log from the other day, but the big thing is that I'm going to try and work smarter this time in order to get the second controller working. Testing frequently and getting it working bit by bit. 
+
+Manuel added a hitbox to the attacking, an hp bar, and now the bullet bill drops a gem that can heal hp. 
+
+I think the first thing I should do is get a second player character loaded up, so I have someone to even control. Time to load in Garner sprites. And then just copy enough code so that his motion is controlled by the first controller. And then work on the second controller integration, working from the controller tester. In fact, maybe I'll just go run that first to make sure both controllers work...
+
+Ok yes they do!! Good.
+
