@@ -8,15 +8,20 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
   FrameTime=75                        'Set your target frame duration/period in milliseconds (i.e., frame rate). This value should probably be between around 50-100ms, i.e. the screen should be cleared and completely redrawn every 50-100ms. If you set your frame rate/frequency too high (i.e., set this FrameTime/period value too low) and don't have at least around 15ms of pause time between each loop, then the USB interface through which the P2 talks to your computer may get clobberred and bogged down, which can result in strange behavior such as the controller data seeming to lag way behind, appearing to make characters move on their own or long after the controls were pressed.
   CollisionDebugMode=false            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
 
+
 obj
   sprites : "OliveiraKammauffSprites_v2"    'Include 112#methods from your external "YourNameSprites" object. Of course, you should change the "YourName" part to be your actual name (LastFirst) for your unique sprite data loading object. Both this external object and your game file will be needed to play your game (so be sure to submit both!).
   i2c     : "jm_i2c"                  'Include methods from jm_i2c bus driver so that the Wii Controller can communicate with the P2 chip over an I2C interface
 
 var                                   'Declare global variables in this block, which can all be read or changed by any of the eight cogs at any time
   byte data[8]                        'This array of 8 bytes is used to store data sent to the P2 chip from the Wii Classic Controller Pro. Your game must include this variable delcaration along with the SetupController and ReadController methods.
-  long MomotPos[4], BulletB[4], HitBox[4],HealthBoost[4]             'Use arrays of 4 longs like these to keep track of all of your characters' data: upper-left pixel's x-position, upper-left pixel's y-position, overall width, overall height. See the DefineCollisionAreas method below.
+  long MomotPos[4], BulletB[4], HitBox[4],HealthBoost[4], GarnerPos[4]            'Use arrays of 4 longs like these to keep track of all of your characters' data: upper-left pixel's x-position, upper-left pixel's y-position, overall width, overall height. See the DefineCollisionAreas method below.
+
   long deltax, x_prev, y_prev, LJoyX, LJoyY, collision, HealthBar
   long Momot, MomotRot, MomotMoving, MomotOpacity, MomotJumping, MomotPunching, PunchRight, MomotKicking, MomotBlocking
+
+  long Garner, GarnerRot, GarnerMoving, GarnerOpacity, GarnerJumping, GarnerThrowing, GarnerBlocking
+
   long BulletHealth, BulletRot, HealthBoostGranted                                    '
   long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay                               'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
   long Stack0[100], Stack1[100], Stack2[100], Stack3[100], Stack4[100], Stack5[100], Stack6[100], Stack7[100] 'Create an empty array of 100 longs for each Cog so that a Spin interpreter running on each has enough scratchpad RAM space into which it can store temporary variables without accidentally overwriting other important data
@@ -29,7 +34,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
   ReadController()                    'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
   sprites.LoadSprites()               'Run the LoadSprites method from within your own Sprites object (a separate file) to upload all of your sprite data from the P2 chip's RAM into your PC's RAM
   debug(`screen clear update)         'Erase everything on the plot screen and update the screen (to erase the "Loading Sprites" text)
-  ShowInstructions()                  'Display the instructions by overlaying a new debug text terminal over top of the video game's plot window
+  'ShowInstructions()                  'Display the instructions by overlaying a new debug text terminal over top of the video game's plot window
 
   DefineCollisionAreas()              'Call the method that sets up the rectangles around objects that will be used to detect collisions                   'Start out with the EasterEgg mode disabled (i.e, just drawing the blue sky box as the background)
 
@@ -60,6 +65,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     {Get Controller Data}
     ReadController()                              'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
     {Update Game State}
+    'playerState(MomotPos, MomotState)
     if data[6].[4]==0                               'Check the 4th bit of the 6th data byte from the controller, which is the -/select button. If it is pressed (=0 in inverted logic), then call the GamePause method to pause the game
       PauseGame()
 
@@ -222,6 +228,8 @@ pub DebugDisplay()                                  'Use to display variables on
         debug(`term1 'All Clear')
       DisplayDelay:=DisplayDelay+clkfreq/5          'Add another 0.2 second worth of system clock pulses to DisplayDelay time (for the next delay)
 
+'pub playerState(player,
+
 
 pub MarioMotion()                    'Cycle through Mario's leg sprite images whenever he's moving to make it look like he's running
   repeat
@@ -345,8 +353,10 @@ pub DrawBackground() | i,j
 pub DrawActors()                'Draw all of the Characters on screen that change (players, enemies, items, health status)
     {DRAWING SPRITES}
             'Sprites's: X position,  Y position   Sprite's: image #,  rotation, scaling, opacity
+    'Print Momot's bottom sprite on screen
     debug(`screen set (`(MomotPos[x]), `(MomotPos[y])) sprite (`(Momot), `(MomotRot), 3, `(MomotOpacity))
-           'Print Momot's bottom sprite on screen
+
+    debug(`screen set (`(MomotPos[x]), `(MomotPos[y])) sprite (`(Momot), `(MomotRot), 3, `(MomotOpacity))
 
     if (BulletHealth > 16)
       debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
