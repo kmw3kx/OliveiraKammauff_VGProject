@@ -84,3 +84,34 @@ I think the first thing I should do is get a second player character loaded up, 
 
 Ok yes they do!! Good.
 
+Ok, Made good progress. More to follow
+
+3/28/26 - GARNER IS PLAYABLE!
+I'm Working on getting him actionable, but I've made a significant amount of progress as of late.
+
+I've added a LOT to the code to help abstract it, including sprite constants and the player state updater. I did completely break collision detection, but I'm hoping it won't be too hard of a fix. With the second player, it might just be better to try and rewrite the other methods so that they run inside of the new context. I think that it could be useful to start to get an idea of how much time each component of the loop adds, so then we know what we really need to run on a different cog. Maybe replace the controller inputs with random byte generators to see how much processing it takes to talk with them. 
+
+Ideally, I think the cogs would function like how they do in this diagram i got from Copilot:
+
+## Cog Allocation Table
+
+| **Cog** | **Role**                          | **Details**                                   |
+|--------:|-----------------------------------|-----------------------------------------------|
+| **0**   | Main Game Loop                    | Reads controller data; updates game state; writes to video buffer |
+| **1**   | Controller #1 Reader              | I2C bus A                                     |
+| **2**   | Controller #2 Reader              | I2C bus B                                     |
+| **3**   | Video Driver                      | To the debug window                               |
+| **4**   | Audio Synth / SFX (eventually)                | Sound generation and effects                  |
+| **5**   | Physics / Animation *(If needed for garner's eyes)*  | Optional physics or animation subsystem       |
+| **6**   | Debug / Serial / Telemetry *(optional)* | Logging, serial output, instrumentation |
+| **7**   | Debug / Serial / Telemetry *(optional)*                               | Logging, serial output, instrumentation                          |
+
+Although, this might require considerable rewrites of the code to work. Maybe it won't be as bad as I think it will tho...
+
+Maybe if I start drawing up some pseudo code for it, at least the screen rendering. 
+
+I also think there needs to be some sort of time syncing, but i'm not certain how that could be handled... 
+
+Anyways, I guess that's a problem for another day...
+
+
