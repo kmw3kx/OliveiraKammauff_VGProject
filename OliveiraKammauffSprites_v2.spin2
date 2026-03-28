@@ -1,12 +1,14 @@
 'This external object holds all of the data needed to define the sprites that your game uses
 con _clkfreq = 300_000_000
+
+Bob = 34
 pub null()                                                      'This is not a top level object
   debug(`term term2 pos 100 0 size 52 2 textsize 18 color red)  'If you see this message, then...
   debug(`term2 'Oops! You have accidentally compiled and run an     external object instead of your top-level game code!')
 
 pub LoadSprites() | i    'Call methods or debug commands to load sprite data from your P2 chip into your PC's RAM when your program starts. You can define up to 256 total sprites at once (sprite numbers 0-255)
 
-  'Load Sprite Set 00 (Mario) to sprite numbers 100-115
+  'Load Momot Sprites to sprite numbers 100-115
   debug(`screen spritedef 100 32 32 `uhex_byte_array_(@Momot_0, 1024) `uhex_long_array_(@Momot_0Colors, $6))
   debug(`screen spritedef 101 32 32 `uhex_byte_array_(@Momot_1, 1024) `uhex_long_array_(@Momot_1Colors, $6))
   debug(`screen spritedef 102 32 32 `uhex_byte_array_(@Momot_2, 1024) `uhex_long_array_(@Momot_2Colors, $6))
