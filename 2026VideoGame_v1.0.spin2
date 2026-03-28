@@ -232,7 +232,7 @@ pub DebugDisplay()                                  'Use to display variables on
         debug(`term1 'All Clear')
       DisplayDelay:=DisplayDelay+clkfreq/5          'Add another 0.2 second worth of system clock pulses to DisplayDelay time (for the next delay)
 
-pub PlayerState(player) | p, d[8], pos[4], state[8]
+pub PlayerState(player) | p, d[8], pos[4], state[8], i
   'Updates the corresponing player's state (Momot [1] or Garner [2])
   'd = data corresponding to given player
   {
@@ -241,9 +241,10 @@ pub PlayerState(player) | p, d[8], pos[4], state[8]
   long Garner, GarnerRot, GarnerMoving, GarnerOpacity, GarnerJumping, GarnerThrowing, GarnerBlocking
   }
     case_fast player
-      1 : p:= 0                'This is the player value used for indexxing in this method: p = player - 1
+      1 : p:= 0                'This is the player value used for indexing in this method: p = player - 1
         ' assign all state and position parameters here for Momot
-        d:=data
+        repeat i from 0 to 7
+          bytemove(d, da             ' BYTEMOVE(Destination, Source, Count)          'Move Count bytes from Source to Destination.
         pos:=MomotPos
         state[0]:=Momot         'Sprite number
         state[1]:=MomotRot      'Rotation val
@@ -259,8 +260,6 @@ pub PlayerState(player) | p, d[8], pos[4], state[8]
         ' assign all state and position parameters here for Garner
         d:=dataP2
         pos:=GarnerPos
-        d:=dataP2
-        pos:=MomotPos
         state[0]:=Garner         'Sprite number
         state[1]:=GarnerRot      'Rotation val
         state[2]:=GarnerMoving   'Moving State
@@ -275,7 +274,12 @@ pub PlayerState(player) | p, d[8], pos[4], state[8]
     y_prev[p]:=pos[y]                              'Store p's previous y position
 
     LJoyX[p]:=0#>(d[0]-LJoyXMin)*100/(LJoyXMax-LJoyXMin)<#100   'Scale the left joystick's analog X and Y ranges to be between 0-100
-    LJoyY[p]:=0#>(d[2]-LJoyYMin)*100/(LJoyYMax-LJoyYMin)<#100   'Note that enclosing a computation or result between #> and <# in Spin2 limits the minimum and maximum value (in this case to beween 0 and 100)
+    'LJoyY:=0#>(data[2]-LJoyYMin)*100/(LJoyYMax-LJoyYMin)<#100   'Note that enclosing a computation or result between #> and <# in Spin2 limits the minimum and maximum value (in this case to beween 0 and 100)
+
+    if player == 1
+      LJoyY[p]:=0#>(data[2]-LJoyYMin)*100/(LJoyYMax-LJoyYMin)<#100
+    if player == 2
+      LJoyY[p]:=0#>(dataP2[2]-LJoyYMin)*100/(LJoyYMax-LJoyYMin)<#100
 
     case_fast LJoyX[p]
        0..20  : pos[x]:=0#> pos[x]-16 <#740
@@ -320,9 +324,9 @@ pub PlayerState(player) | p, d[8], pos[4], state[8]
     else
       state[2]:=false
 
-    if (data[7].[6] == 0) and (MomotJumping == false)
-      MomotJumping := true                              'AI Helped with the Jumping Logic, specifically on how to make it one motion with one press of B'
-      Momot := 100
+    if (d[7].[6] == 0) and (state[4] == false)       'state[4] is the jumping state
+      state[4] := true                              'AI Helped with the Jumping Logic, specifically on how to make it one motion with one press of B'
+      state[0] := 100           'spriteState
 
     if MomotJumping
       MomotJump()
@@ -398,7 +402,7 @@ pub MarioMotion()                    'Cycle through Mario's leg sprite images wh
 pub DefineCollisionAreas()           'Make arrays for each entity's boundary box's coordinate info [x0,y0,width,height], where x0 and y0 are the upper left pixel of the box
                                      'e.g., Mario[x] is x-position of upper left pixel, Mario[y] is y-position of upper left pixel, Mario[width] is Mario's overall height, Mario[height] is Mario's overall width (uncomment lines in CheckCollision to see red bounding boxes)
   MomotPos[x]:=100                      'Starting Mario x position (will probably be overwritten by current joystick pot value soon)
-  MomotPos[y]:=128                      'Starting Mario y position (upper left corner of his top half sprite)
+  MomotPos[y]:=200                      'Starting Mario y position (upper left corner of his top half sprite)
   MomotPos[width]:=96                   'Width of Mario's character (32 since we're displaying the 16x16 sprite image at 2x scale)
   MomotPos[height]:=96
 
