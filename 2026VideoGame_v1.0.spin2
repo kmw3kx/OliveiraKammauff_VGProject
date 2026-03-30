@@ -39,10 +39,11 @@ obj
   i2c[2]     : "jm_i2c"                  'Include methods from jm_i2c bus driver so that the Wii Controller can communicate with the P2 chip over an I2C interface
 
 var                                   'Declare global variables in this block, which can all be read or changed by any of the eight cogs at any time
-  byte data[8], dataP2[8]                       'This array of 8 bytes is used to store data sent to the P2 chip from the Wii Classic Controller Pro. Your game must include this variable delcaration along with the SetupController and ReadController methods.
+  byte data[16], dataP2[8]                       'This array of 8 bytes is used to store data sent to the P2 chip from the Wii Classic Controller Pro. Your game must include this variable delcaration along with the SetupController and ReadController methods.
   long MomotPos[4], BulletB[4], HitBox[4],HealthBoost[4], GarnerPos[4]          'Use arrays of 4 longs like these to keep track of all of your characters' data:
                                                                                 'upper-left pixel's x-position, upper-left pixel's y-position, overall width, overall height.
-                                                                                'See the DefineCollisionAreas method below.
+  long playerPos[8], playerState[18], playerHit[8]
+                                                                               'See the DefineCollisionAreas method below.
 
   long deltax[2], x_prev[2], y_prev[2], LJoyX[2], LJoyY[2], collision[2], HealthBar[2]
   long Momot, MomotRot, MomotMoving, MomotOpacity, MomotJumping, MomotPunching, PunchRight, MomotKicking, MomotBlocking
@@ -90,12 +91,12 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     ReadController(1)
 
     {Update Game State}
-    playerState(1)
-    playerState(2)
+    getPlayerState(1)
+    getPlayerState(2)
 
-    DrawGame()
+
     {Collision Check}
-
+    {
     if (BulletHealth < 16 and HealthBoostGranted == false)
       if CheckCollision(@MomotPos,@HealthBoost) and MomotPunching
         HealthBar:=(HealthBar + 50)
@@ -115,6 +116,8 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
           BulletHealth:=(BulletHealth - 15)
         if MomotKicking
           BulletHealth:=(BulletHealth - 30)
+    }
+      DrawGame()
 
     ''It is highly recommended that you include the following code in your game
       Frame:=getct()
@@ -170,7 +173,7 @@ pub DebugDisplay()                                  'Use to display variables on
         }
       DisplayDelay:=DisplayDelay+clkfreq/5          'Add another 0.2 second worth of system clock pulses to DisplayDelay time (for the next delay)
 
-pub PlayerState(player) | p, d[8], pos[4], state[8], i
+pub getPlayerState(player) | p, d[8], pos[4], state[8], i
   'Updates the corresponing player's state (Momot [1] or Garner [2])
   'd = data corresponding to given player
   {
@@ -178,6 +181,8 @@ pub PlayerState(player) | p, d[8], pos[4], state[8], i
 
   long Garner, GarnerRot, GarnerMoving, GarnerOpacity, GarnerJumping, GarnerThrowing, GarnerBlocking
   }
+    p:= player - 1
+    {
     case_fast player
       1 : p:= 0                'This is the player value used for indexing in this method: p = player - 1
         ' assign all state and position parameters here for Momot
@@ -210,45 +215,47 @@ pub PlayerState(player) | p, d[8], pos[4], state[8], i
         'state[6]:=GarnerKicking  'unused state
         state[7]:=GarnerBlocking 'blocking state
         'state[8]:=GarnerHit     'Hitstun state
-    deltax[p]:=abs(pos[x]-x_prev)                  'Difference between current x and previous x position (how far character has moved since last main loop iteration)
-    x_prev[p]:=pos[x]                              'Store p's previous x position
-    y_prev[p]:=pos[y]                              'Store p's previous y position
+    }
+    deltax[p]:=abs(playerPos[x+4*p]-x_prev[p])                  'Difference between current x and previous x position (how far character has moved since last main loop iteration)
+    x_prev[p]:=playerPos[x+4*p]                              'Store p's previous x position
+    y_prev[p]:=playerPos[y+4*p]                              'Store p's previous y position
+
     {
     'Check the 4th bit of the 6th data byte from the controller, which is the -/select button.
     'If it is pressed (=0 in inverted logic), then call the GamePause method to pause the game
     if d[6].[4]==0
       PauseGame(p)
     }
-    LJoyX[p]:=0#>(d[0]-LJoyXMin)*100/(LJoyXMax-LJoyXMin)<#100   'Scale the left joystick's analog X and Y ranges to be between 0-100
-    LJoyY[p]:=0#>(d[2]-LJoyYMin)*100/(LJoyYMax-LJoyYMin)<#100   'Note that enclosing a computation or result between #> and <# in Spin2 limits the minimum and maximum value (in this case to beween 0 and 100)
+    LJoyX[p]:=0#>(data[0+8*p]-LJoyXMin)*100/(LJoyXMax-LJoyXMin)<#100   'Scale the left joystick's analog X and Y ranges to be between 0-100
+    LJoyY[p]:=0#>(data[2+8*p]-LJoyYMin)*100/(LJoyYMax-LJoyYMin)<#100   'Note that enclosing a computation or result between #> and <# in Spin2 limits the minimum and maximum value (in this case to beween 0 and 100)
 
     case_fast LJoyX[p]
-       0..20  : pos[x]:=0#> pos[x]-16 <#740
+       0..20  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-16 <#740
         'HitBox[x]:=0#> HitBox[x]-16 <#740
-      21..30  : pos[x]:=0#> pos[x]-8 <#740
+      21..30  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-8 <#740
         'HitBox[x]:=0#> HitBox[x]-8 <#740                            'Added a HitBox that moves whenever Momot moves'
-      31..40  : pos[x]:=0#> pos[x]-4 <#740
+      31..40  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-4 <#740
         'HitBox[x]:=0#> HitBox[x]-4 <#740
       '41-60 is joystick deadband (X position doesn't change)
-      61..70  : pos[x]:=0#> pos[x]+4 <#740
+      61..70  : playerPos[x+4*p]:=0#> playerPos[x+4*p]+4 <#740
         'HitBox[x]:=0#> HitBox[x]+4 <#740
-      71..80  : pos[x]:=0#> pos[x]+8 <#740
+      71..80  : playerPos[x+4*p]:=0#> playerPos[x+4*p]+8 <#740
         'HitBox[x]:=0#> HitBox[x]+8 <#740
-      81..100 : pos[x]:=0#> pos[x]+16 <#740
+      81..100 : playerPos[x+4*p]:=0#> playerPos[x+4*p]+16 <#740
         'HitBox[x]:=0#> HitBox[x]+16 <#740
     case_fast LJoyY[p]
-      0..20  : pos[y]:=64#> pos[y]-16 <#312
+      0..20  : playerPos[y+4*p]:=64#> playerPos[y+4*p]-16 <#312
         'HitBox[y]:=64#> HitBox[y]-16 <#312
-      21..30  : pos[y]:=64#> pos[y]-8 <#312
+      21..30  : playerPos[y+4*p]:=64#> playerPos[y+4*p]-8 <#312
         'HitBox[y]:=64#> HitBox[y]-8 <#312
-      31..40  : pos[y]:=64#> pos[y]-4 <#312
+      31..40  : playerPos[y+4*p]:=64#> playerPos[y+4*p]-4 <#312
         'HitBox[y]:=64#> HitBox[y]-4 <#312
       '41-60 is joystick deadband (Y position doesn't change)
-      61..70  : pos[y]:=64#> pos[y]+4 <#312
+      61..70  : playerPos[y+4*p]:=64#> playerPos[y+4*p]+4 <#312
         'HitBox[y]:=64#> HitBox[y]+4 <#312
-      71..80  : pos[y]:=64#> pos[y]+8 <#312
+      71..80  : playerPos[y+4*p]:=64#> playerPos[y+4*p]+8 <#312
         'HitBox[y]:=64#> HitBox[y]+8 <#312
-      81..100 : pos[y]:=64#> pos[y]+16 <#312
+      81..100 : playerPos[y+4*p]:=64#> playerPos[y+4*p]+16 <#312
         'HitBox[y]:=64#> HitBox[y]+16 <#312
 
 
@@ -257,27 +264,40 @@ pub PlayerState(player) | p, d[8], pos[4], state[8], i
 
     {Player Moving}
 
+    {Player Pivoting}
+    if playerPos[x+4*p]<>x_prev[p]
+      playerState[2+9*p]:=true            'moving state
+      if playerPos[x+4*p]>x_prev[p]
+        state[1+9*p]:=0             'rotation state
+      elseif playerPos[x+4*p]<x_prev[p]
+        state[1+9*p]:=1
+        state[2+9*p]:=true
+    else
+      state[2+9*p]:=false
+
 
     {Player Pivoting}
-    if pos[x]<>x_prev[p]
-      state[2]:=true            'moving state
-      if pos[x]>x_prev[p]
-        state[1]:=0             'rotation state
-      elseif pos[x]<x_prev[p]
-        state[1]:=1
-        state[2]:=true
+    if playerPos[x+4*p]<>x_prev[p]
+      state[2+9*p]:=true            'moving state
+      if playerPos[x+4*p]>x_prev[p]
+        state[1+9*p]:=0             'rotation state
+      elseif playerPos[x+4*p]<x_prev[p]
+        state[1+9*p]:=1
+        state[2+9*p]:=true
     else
-      state[2]:=false
+      state[2+9*p]:=false
 
     {Player Jumping}
     if (d[7].[6] == 0) and (state[4] == false)       'state[4] is the jumping state
-      state[4] := true                              'AI Helped with the Jumping Logic, specifically on how to make it one motion with one press of B'
-      state[0] := 100           'spriteState
+      state[4+9*p] := true                              'AI Helped with the Jumping Logic, specifically on how to make it one motion with one press of B'
+      case_fast p
+        0 : state[0] := 100            'spriteState
+        1 : state[9] := 0
 
     if state[4]
       case p
-        1 : MomotJump()
-        2 : GarnerJump()
+        0 : MomotJump()
+        1 : GarnerJump()
       waitms(50#> 600/deltax[p] <#333)
 
 
@@ -287,7 +307,7 @@ pub PlayerState(player) | p, d[8], pos[4], state[8], i
 
     if MomotPunching
       MomotPunch()
-       waitms(50#> 600/deltax <#333)
+       waitms(50#> 600/deltax[0] <#333)
 
     if data[7].[3]==0 and (MomotKicking == false)
       MomotKicking:=true
@@ -295,7 +315,7 @@ pub PlayerState(player) | p, d[8], pos[4], state[8], i
 
     if MomotKicking
       MomotKick()
-       waitms(50#> 600/deltax <#333)
+       waitms(50#> 600/deltax[0] <#333)
 
     if data[7].[4]==0
       MomotBlocking := true
@@ -303,8 +323,8 @@ pub PlayerState(player) | p, d[8], pos[4], state[8], i
 
     if MomotBlocking
       MomotBlock()
-      waitms(50#> 600/deltax <#333)
-
+      waitms(50#> 600/deltax[0] <#333)
+    {
     'Rewrite new states
     case_fast player
       1 : p:= 0                'This is the player value used in this method: p = player - 1
@@ -333,7 +353,7 @@ pub PlayerState(player) | p, d[8], pos[4], state[8], i
           dataP2[i]:=d[i]
           }
         repeat i from 0 to 3
-          GarnerPos[i]:=pos[i]
+          playerPos[i]:=pos[i]
         Garner:=state[0]         'Sprite number
         GarnerRot:=state[1]      'Rotation val
         GarnerMoving:=state[2]   'Moving State
@@ -344,7 +364,7 @@ pub PlayerState(player) | p, d[8], pos[4], state[8], i
         GarnerBlocking:=state[7] 'blocking state
         'state[8]:=MomotHit     'Hitstun state
 
-
+        }
 
 pub PlayerMotion()                    'Cycle through Mario's leg sprite images whenever he's moving to make it look like he's running
   repeat
@@ -372,28 +392,31 @@ pub PlayerMoving(player)
     waitms(50#> 600/deltax <#333)    'Wait between 33ms - 333ms (speed scaled based on distance moved)
 
 
-pub DefineCollisionAreas()           'Make arrays for each entity's boundary box's coordinate info [x0,y0,width,height], where x0 and y0 are the upper left pixel of the box
+pub DefineCollisionAreas() | i          'Make arrays for each entity's boundary box's coordinate info [x0,y0,width,height], where x0 and y0 are the upper left pixel of the box
                                      'e.g., Mario[x] is x-position of upper left pixel, Mario[y] is y-position of upper left pixel, Mario[width] is Mario's overall height, Mario[height] is Mario's overall width (uncomment lines in CheckCollision to see red bounding boxes)
-  MomotPos[x]:=MOMOT_INIT[x]                      'Starting Mario x position (will probably be overwritten by current joystick pot value soon)
-  MomotPos[y]:=MOMOT_INIT[y]                      'Starting Mario y position (upper left corner of his top half sprite)
-  MomotPos[width]:=MOMOT_INIT[width]                   'Width of Mario's character (32 since we're displaying the 16x16 sprite image at 2x scale)
-  MomotPos[height]:=MOMOT_INIT[height]
+  playerPos[x]:=MOMOT_INIT[x]                      'Starting Mario x position (will probably be overwritten by current joystick pot value soon)
+  playerPos[y]:=MOMOT_INIT[y]                      'Starting Mario y position (upper left corner of his top half sprite)
+  playerPos[width]:=MOMOT_INIT[width]                   'Width of Mario's character (32 since we're displaying the 16x16 sprite image at 2x scale)
+  playerPos[height]:=MOMOT_INIT[height]
 
-  GarnerPos[x]:=GARNER_INIT[x]                      'Starting Mario x position (will probably be overwritten by current joystick pot value soon)
-  GarnerPos[y]:=GARNER_INIT[y]                      'Starting Mario y position (upper left corner of his top half sprite)
-  GarnerPos[width]:=GARNER_INIT[width]                   'Width of Mario's character (32 since we're displaying the 16x16 sprite image at 2x scale)
-  GarnerPos[height]:=GARNER_INIT[height]
+  playerPos[x+4]:=GARNER_INIT[x]                      'Starting Mario x position (will probably be overwritten by current joystick pot value soon)
+  playerPos[y+4]:=GARNER_INIT[y]                      'Starting Mario y position (upper left corner of his top half sprite)
+  playerPos[width+4]:=GARNER_INIT[width]                   'Width of Mario's character (32 since we're displaying the 16x16 sprite image at 2x scale)
+  playerPos[height+4]:=GARNER_INIT[height]
 
   BulletB[0]:=700                     'Starting Goomba x position (far right of screen)
   BulletB[1]:=198                      'Starting Goomba y position
   BulletB[2]:=64                      'Width of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
   BulletB[3]:=64                  'Height of Mario's character (64 since we're displaying two 16x16 sprite images at 2x scale)                     'Height of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
 
-
+  {
   HitBox[0]:=116
   HitBox[1]:=128
   HitBox[2]:=64
   HitBox[3]:=96
+  }
+  repeat i from 0 to 7
+    playerHit[i]:=playerPos[i]
 
   HealthBoost[0]:=500
   HealthBoost[1]:=250
@@ -499,9 +522,9 @@ pub DrawActors()                'Draw all of the Characters on screen that chang
     {DRAWING SPRITES}
             'Sprites's: X position,  Y position   Sprite's: image #,  rotation, scaling, opacity
     'Print Momot's bottom sprite on screen
-    debug(`screen set (`(MomotPos[x]), `(MomotPos[y])) sprite (`(Momot), `(MomotRot), 3, `(MomotOpacity))
+    debug(`screen set (`(playerPos[x]), `(playerPos[y])) sprite (`(Momot), `(MomotRot), 3, `(MomotOpacity))                      'Momot
 
-    debug(`screen set (`(GarnerPos[x]), `(GarnerPos[y])) sprite (`(Garner), `(GarnerRot), 3, `(GarnerOpacity))
+    debug(`screen set (`(playerPos[x+4]), `(playerPos[y+4])) sprite (`(Garner), `(GarnerRot), 3, `(GarnerOpacity))                  'Garner
 
     if (BulletHealth > 16)
       debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
@@ -591,8 +614,8 @@ pub ReadController(controller) | i            ''Have the P2 chip get the 8 bytes
     data[7]:=i2c[controller].read(1)              'Read in byte, store it to data array, then send 1=NAK (after the last byte)
   elseif controller==1
     repeat i from 0 to 6
-      dataP2[i]:=i2c[controller].read(0)            'Read in byte, store it to data array, then send 0=ACK
-    dataP2[7]:=i2c[controller].read(1)              'Read in byte, store it to data array, then send 1=NAK (after the last byte)
+      data[i+8]:=i2c[controller].read(0)            'Read in byte, store it to data array, then send 0=ACK
+    data[7+8]:=i2c[controller].read(1)              'Read in byte, store it to data array, then send 1=NAK (after the last byte)
   i2c[controller].stop()
 
 
@@ -611,12 +634,13 @@ pub MomotJump()                                                      'Set MarioL
         MomotJumping:=false
 pub GarnerJump()                                                      'Set MarioLegs to be the stationary leg sprite
   case Garner                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
-      100 : Garner:=105           ' If MarioLegs==101, then set MarioLegs:=102
-      105 : Garner:=106
+      GGIC : Garner:=GGCROUCH           ' If MarioLegs==101, then set MarioLegs:=102
+      GGCROUCH : Garner:=GGJUMP
         GarnerPos[y]:=GarnerPos[y]+64                                     ' If MarioLegs==102, then set MarioLegs:=103
-      106 : Garner:=107
+      GGJUMP : Garner:=GGFALL
         GarnerPos[y]:=GarnerPos[y]-64
-      107 : Garner:=100
+      GGFALL : Garner:=GGLAND
+      GGLAND : Garner:=GGIC
         GarnerJumping:=false
 pub MomotPunch()
   if PunchRight == true
