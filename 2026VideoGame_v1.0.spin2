@@ -6,7 +6,7 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
   RJoyXMin=4, RJoyXMax=252, RJoyYMin=4, RJoyYMax=252, LJoyXMin=2, LJoyXMax=254, LJoyYMin=4, LJoyYMax=252 'Your Wii Controller probably uses these default range values, but not all of them have been tested. You can use the Wii Controller Tester program to verify exactly what values your controller outputs
   #0, x, y, width, height             '#0 resets the automatic constant counter number to 0 (just in case it has been changed by preceding unspecified constants), so here x=0, y=1, width=2, height=3 which is convenient for collision definitions arrays e.g., Momot[x] is the same as Momot[0], Momot[y] is the same as Momot[1], etc. (and for most people, it's easier to remember that the x index holds the x position value rather than the 0th index holds the x value!-)
   FrameTime=100                        'Set your target frame duration/period in milliseconds (i.e., frame rate). This value should probably be between around 50-100ms, i.e. the screen should be cleared and completely redrawn every 50-100ms. If you set your frame rate/frequency too high (i.e., set this FrameTime/period value too low) and don't have at least around 15ms of pause time between each loop, then the USB interface through which the P2 talks to your computer may get clobberred and bogged down, which can result in strange behavior such as the controller data seeming to lag way behind, appearing to make characters move on their own or long after the controls were pressed.
-  CollisionDebugMode=false            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
+  CollisionDebugMode=true            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
 
   {SPRITE NAMES}
   #100 'Explaining the above comment quickly; spin2 auto increments constants w/out definitions,
@@ -69,9 +69,8 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
 
   DefineCollisionAreas()              'Call the method that sets up the rectangles around objects that will be used to detect collisions                   'Start out with the EasterEgg mode disabled (i.e, just drawing the blue sky box as the background)
 
-
-  'cogspin(1,PlayerMotion(),@Stack1)
-  'cogspin(2, DrawGame(),@Stack2)                       'Frame rate not good; run in main loop
+  cogspin(1,MomotMotion(),@Stack1)
+  cogspin(2, GarnerMotion(),@Stack2)                       'Frame rate not good; run in main loop
   cogspin(3, EnemyMotion(),@Stack3)                'Start up Cog 1 and tell it to run the MarioMotion method in parallel to what's already running on Cog 0
   'cogspin(4, readControllersLoop(), @Stack4)
   cogspin(7,DebugDisplay(),@Stack7)               'Start up Cog 7 and tell it to run the DebugDisplay method in parallel to what's going on on all of the other cogs (Note: You are not required to have this feature in your final game i.e., if you need to use Cog 7 for something else)
@@ -96,9 +95,9 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
 
 
     {Collision Check}
-    {
+
     if (BulletHealth < 16 and HealthBoostGranted == false)
-      if CheckCollision(@MomotPos,@HealthBoost) and MomotPunching
+      if CheckCollision(@playerPos,@HealthBoost) and playerState[5]
         HealthBar:=(HealthBar + 50)
         if HealthBar>144
           HealthBar:=144
@@ -108,16 +107,16 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     if(BulletHealth > 16)
       collision:=CheckCollision(@HitBox,@BulletB)
       if collision==true
-        if MomotBlocking == false
-          HealthBar:=(HealthBar - 2)
+        if playerState[7] == false
+          HealthBar[0]:=(HealthBar[0] - 2)
     if(BulletHealth > 16)
-      if CheckCollision(@MomotPos,@BulletB)
-        if MomotPunching
+      if CheckCollision(@playerPos,@BulletB)
+        if playerState[5]
           BulletHealth:=(BulletHealth - 15)
-        if MomotKicking
+        if playerState[6]
           BulletHealth:=(BulletHealth - 30)
-    }
-      DrawGame()
+
+    DrawGame()
 
     ''It is highly recommended that you include the following code in your game
       Frame:=getct()
@@ -173,7 +172,7 @@ pub DebugDisplay()                                  'Use to display variables on
         }
       DisplayDelay:=DisplayDelay+clkfreq/5          'Add another 0.2 second worth of system clock pulses to DisplayDelay time (for the next delay)
 
-pub getPlayerState(player) | p, d[8], pos[4], state[8], i
+pub getPlayerState(player) | p, pos[4], i
   'Updates the corresponing player's state (Momot [1] or Garner [2])
   'd = data corresponding to given player
   {
@@ -268,62 +267,71 @@ pub getPlayerState(player) | p, d[8], pos[4], state[8], i
     if playerPos[x+4*p]<>x_prev[p]
       playerState[2+9*p]:=true            'moving state
       if playerPos[x+4*p]>x_prev[p]
-        state[1+9*p]:=0             'rotation state
+        playerState[1+9*p]:=0             'rotation state
       elseif playerPos[x+4*p]<x_prev[p]
-        state[1+9*p]:=1
-        state[2+9*p]:=true
+        playerState[1+9*p]:=1
+        playerState[2+9*p]:=true
     else
-      state[2+9*p]:=false
+      playerState[2+9*p]:=false
 
-
-    {Player Pivoting}
-    if playerPos[x+4*p]<>x_prev[p]
-      state[2+9*p]:=true            'moving state
-      if playerPos[x+4*p]>x_prev[p]
-        state[1+9*p]:=0             'rotation state
-      elseif playerPos[x+4*p]<x_prev[p]
-        state[1+9*p]:=1
-        state[2+9*p]:=true
-    else
-      state[2+9*p]:=false
 
     {Player Jumping}
-    if (d[7].[6] == 0) and (state[4] == false)       'state[4] is the jumping state
-      state[4+9*p] := true                              'AI Helped with the Jumping Logic, specifically on how to make it one motion with one press of B'
-      case_fast p
-        0 : state[0] := 100            'spriteState
-        1 : state[9] := 0
+    if (data[7+8*p].[6] == 0) and (playerState[4+9*p] == false)       'state[4] is the jumping state
+      playerState[4+9*p] := true                              '       AI Helped with the Jumping Logic, specifically on how to make it one motion with one press of B'
+      case_fast p                                                     'Other movements followed similar logic'
+        0 : playerState[0] := 100            'spriteState'
+        1 : playerState[9] := 0
 
-    if state[4]
-      case p
+    if playerState[4+9*p]
+      case_fast p
         0 : MomotJump()
         1 : GarnerJump()
       waitms(50#> 600/deltax[p] <#333)
 
 
-    if data[7].[5]==0 and (MomotPunching == false)
-      MomotPunching:=true
-      Momot:=100
+    {Player Basic Attack}
 
-    if MomotPunching
-      MomotPunch()
-       waitms(50#> 600/deltax[0] <#333)
+    if (data[7+8*p].[5] == 0) and (playerState[5+9*p] == false)       'playerState[5] is the attack state
+      playerState[5+9*p] := true
+      case_fast p
+        0 : playerState[0] := 100            'spriteState'
+        1 : playerState[9] := 0
 
-    if data[7].[3]==0 and (MomotKicking == false)
-      MomotKicking:=true
-      Momot:=100
 
-    if MomotKicking
-      MomotKick()
-       waitms(50#> 600/deltax[0] <#333)
+    if playerState[5+9*p]
+      case_fast p
+        0 : MomotPunch()
+        1 : GarnerJump()
+      waitms(50#> 600/deltax[p] <#333)
 
-    if data[7].[4]==0
-      MomotBlocking := true
-      Momot:= 100
+    {Player Heavy Attack}
 
-    if MomotBlocking
-      MomotBlock()
-      waitms(50#> 600/deltax[0] <#333)
+    if (data[7+8*p].[3] == 0) and (playerState[6+9*p] == false)       'playerState[6] is the heavy attack state
+      playerState[6+9*p] := true
+      case_fast p
+        0 : playerState[0] := 100            'spriteState'
+        1 : playerState[9] := 0
+
+
+    if playerState[6+9*p]
+      case_fast p
+        0 : MomotKick()
+        1 : GarnerJump()
+      waitms(50#> 600/deltax[p] <#333)
+
+    {Player Block}
+
+    if (data[7+8*p].[4] == 0) and (playerState[7+9*p] == false)       'playerState[6] is the heavy attack state
+      playerState[7+9*p] := true
+
+
+    if playerState[7+9*p]
+      case_fast p
+        0 : MomotBlock()
+        1 : GarnerJump()
+      waitms(50#> 600/deltax[p] <#333)
+
+
     {
     'Rewrite new states
     case_fast player
@@ -366,30 +374,29 @@ pub getPlayerState(player) | p, d[8], pos[4], state[8], i
 
         }
 
-pub PlayerMotion()                    'Cycle through Mario's leg sprite images whenever he's moving to make it look like he's running
+pub GarnerMotion()                    'Cycle through Mario's leg sprite images whenever he's moving to make it look like he's running
   repeat
-  {
-    if MomotMoving==false            'Check to see if Cog 0 has set the MomotMoving flag to be true or false
-      Momot:=100                 'Set MarioLegs to be the stationary leg sprite
-    repeat until MomotMoving==true   'Repeat just this line until Mario is moving
-    case Momot                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
-      100 : Momot:=101           ' If MarioLegs==101, then set MarioLegs:=102
-      101 : Momot:=102           ' If MarioLegs==102, then set MarioLegs:=103
-      102 : Momot:=103           ' If MarioLegs==103, then set MarioLegs:=105
-      103 : Momot:=100           ' If MarioLegs==105, then set MarioLegs:=101
-    waitms(50#> 600/deltax <#333)    'Wait between 33ms - 333ms (speed scaled based on distance moved)
-    }
-pub PlayerMoving(player)
+    if playerState[11]==false            'Check to see if Cog 0 has set the MomotMoving flag to be true or false
+      Garner:= GGIC                 'Set MarioLegs to be the stationary leg sprite
+    repeat until playerState[11]==true    'Repeat just this line until Mario is moving
+    case Garner                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
+        GGIC : Garner:= 5           ' If MarioLegs==101, then set MarioLegs:=102
+        5 : Garner:= 6            ' If MarioLegs==102, then set MarioLegs:=103
+        6 : Garner:= 7           ' If MarioLegs==103, then set MarioLegs:=105
+        7 : Garner:= GGIC           ' If MarioLegs==105, then set MarioLegs:=101
+    waitms(50#> 600/deltax[0] <#333)
 
-  if MomotMoving==false            'Check to see if Cog 0 has set the MomotMoving flag to be true or false
+pub MomotMotion()
+  repeat
+    if playerState[2]==false            'Check to see if Cog 0 has set the MomotMoving flag to be true or false
       Momot:=100                 'Set MarioLegs to be the stationary leg sprite
-    repeat until MomotMoving==true   'Repeat just this line until Mario is moving
+    repeat until playerState[2]==true    'Repeat just this line until Mario is moving
     case Momot                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
-      100 : Momot:=101           ' If MarioLegs==101, then set MarioLegs:=102
-      101 : Momot:=102           ' If MarioLegs==102, then set MarioLegs:=103
-      102 : Momot:=103           ' If MarioLegs==103, then set MarioLegs:=105
-      103 : Momot:=100           ' If MarioLegs==105, then set MarioLegs:=101
-    waitms(50#> 600/deltax <#333)    'Wait between 33ms - 333ms (speed scaled based on distance moved)
+        100 : Momot:=101           ' If MarioLegs==101, then set MarioLegs:=102
+        101 : Momot:=102           ' If MarioLegs==102, then set MarioLegs:=103
+        102 : Momot:=103           ' If MarioLegs==103, then set MarioLegs:=105
+        103 : Momot:=100           ' If MarioLegs==105, then set MarioLegs:=101
+    waitms(50#> 600/deltax[0] <#333)    'Wait between 33ms - 333ms (speed scaled based on distance moved)
 
 
 pub DefineCollisionAreas() | i          'Make arrays for each entity's boundary box's coordinate info [x0,y0,width,height], where x0 and y0 are the upper left pixel of the box
@@ -409,12 +416,12 @@ pub DefineCollisionAreas() | i          'Make arrays for each entity's boundary 
   BulletB[2]:=64                      'Width of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
   BulletB[3]:=64                  'Height of Mario's character (64 since we're displaying two 16x16 sprite images at 2x scale)                     'Height of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
 
-  {
+
   HitBox[0]:=116
   HitBox[1]:=128
   HitBox[2]:=64
   HitBox[3]:=96
-  }
+
   repeat i from 0 to 7
     playerHit[i]:=playerPos[i]
 
@@ -502,7 +509,8 @@ pub DrawBackground() | i,j
       debug(`screen set (`(i), 704) sprite (201, 0, 2))
 
   debug(`screen set 96 576 color $DB1818 box 128 24)
-  debug(`screen set `(16+(HealthBar / 2)) 576 color $1BDB18 box `(HealthBar) 24)   'Used AI to figure out how to make the healthbar go from left to right'
+  debug(`screen set `(16+(HealthBar[0] / 2)) 576 color $1BDB18 box `(HealthBar[0]) 24)   'Used AI to figure out how to make the healthbar go from left to right'
+  debug(`screen set `(16+(HealthBar[1] / 2)) 528 color $1BDB18 box `(HealthBar[1]) 24)
 
   debug(`screen set (upper-left_X_coordinate, upper-left_Y_coordinate) sprite (SpriteNumber, Rotation, ScalingFactor, SpriteOpacity))
 
@@ -513,7 +521,8 @@ pub SpawnActors()
     Garner := 0                                 'Starting sprite number for Momot's bottom half image
     GarnerOpacity:=255
 
-    HealthBar:=144
+    HealthBar[0]:=144
+    HealthBar[1]:=144
     BulletHealth:=255
     BulletRot:=1                               'Start with Mario fully opaque (the 4th parameter in a debug sprite command adjusts transparency between 255 (default) and 0, which is fully transparent/invisible
     PunchRight := true
@@ -522,9 +531,9 @@ pub DrawActors()                'Draw all of the Characters on screen that chang
     {DRAWING SPRITES}
             'Sprites's: X position,  Y position   Sprite's: image #,  rotation, scaling, opacity
     'Print Momot's bottom sprite on screen
-    debug(`screen set (`(playerPos[x]), `(playerPos[y])) sprite (`(Momot), `(MomotRot), 3, `(MomotOpacity))                      'Momot
+    debug(`screen set (`(playerPos[x]), `(playerPos[y])) sprite (`(Momot), `(playerState[1]), 3, `(MomotOpacity))                      'Momot
 
-    debug(`screen set (`(playerPos[x+4]), `(playerPos[y+4])) sprite (`(Garner), `(GarnerRot), 3, `(GarnerOpacity))                  'Garner
+    debug(`screen set (`(playerPos[x+4]), `(playerPos[y+4])) sprite (`(Garner), `(playerState[10]), 3, `(GarnerOpacity))                  'Garner
 
     if (BulletHealth > 16)
       debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
@@ -627,21 +636,21 @@ pub MomotJump()                                                      'Set MarioL
   case Momot                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
       100 : Momot:=105           ' If MarioLegs==101, then set MarioLegs:=102
       105 : Momot:=106
-        MomotPos[y]:=MomotPos[y]+64                                     ' If MarioLegs==102, then set MarioLegs:=103
+        MomotPos[y]:=MomotPos[y]+80                                     ' If MarioLegs==102, then set MarioLegs:=103
       106 : Momot:=107
-        MomotPos[y]:=MomotPos[y]-64
+        MomotPos[y]:=MomotPos[y]-80
       107 : Momot:=100
-        MomotJumping:=false
+        playerState[4]:=false
 pub GarnerJump()                                                      'Set MarioLegs to be the stationary leg sprite
   case Garner                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
       GGIC : Garner:=GGCROUCH           ' If MarioLegs==101, then set MarioLegs:=102
       GGCROUCH : Garner:=GGJUMP
-        GarnerPos[y]:=GarnerPos[y]+64                                     ' If MarioLegs==102, then set MarioLegs:=103
+        GarnerPos[y]:=GarnerPos[y]+80                                     ' If MarioLegs==102, then set MarioLegs:=103
       GGJUMP : Garner:=GGFALL
-        GarnerPos[y]:=GarnerPos[y]-64
+        GarnerPos[y]:=GarnerPos[y]-80
       GGFALL : Garner:=GGLAND
       GGLAND : Garner:=GGIC
-        GarnerJumping:=false
+        playerState[13]:=false
 pub MomotPunch()
   if PunchRight == true
     case Momot
@@ -651,7 +660,7 @@ pub MomotPunch()
       113 : Momot:= 114
       114 : Momot:= 100
         PunchRight:= false
-        MomotPunching:= false
+        playerState[5]:= false
   else
     case Momot
       100 : Momot:= 116
@@ -660,7 +669,7 @@ pub MomotPunch()
       118 : Momot:= 119
       119 : Momot:= 100
         PunchRight:= true
-        MomotPunching := false
+        playerState[5] := false
 
 pub MomotKick()
   case Momot
@@ -670,13 +679,15 @@ pub MomotKick()
       124 : Momot:= 125
       125 : Momot:= 126
       126 : Momot:= 100
-        MomotKicking:= false
+        playerState[6]:= false
 
 pub MomotBlock()
-  case Momot
-    100 : Momot:= 115
-    115 : Momot:= 100
-      MomotBlocking:=false
+  if (data[7].[4] == 0)      'AI Helped rewrite this method when implementing two playable characters'
+    Momot := 115
+    playerState[7] := true
+  else
+    Momot := 100
+    playerState[7] := false
 
 pub EnemyMotion()
   if BulletHealth > 16
