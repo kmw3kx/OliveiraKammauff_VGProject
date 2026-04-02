@@ -40,7 +40,7 @@ obj
 
 var                                   'Declare global variables in this block, which can all be read or changed by any of the eight cogs at any time
   byte data[16], dataP2[8]                       'This array of 8 bytes is used to store data sent to the P2 chip from the Wii Classic Controller Pro. Your game must include this variable delcaration along with the SetupController and ReadController methods.
-  long MomotPos[4], BulletB[4], HitBox[4],HealthBoost[4], GarnerPos[4]          'Use arrays of 4 longs like these to keep track of all of your characters' data:
+  long MomotPos[4], BulletB[4], HitBoxes[8],HealthBoost[4], GarnerPos[4]          'Use arrays of 4 longs like these to keep track of all of your characters' data:
                                                                                 'upper-left pixel's x-position, upper-left pixel's y-position, overall width, overall height.
   long playerPos[8], playerState[18], playerHit[8]
                                                                                'See the DefineCollisionAreas method below.
@@ -86,6 +86,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     background that a character will never move on top of (to save time in each iteration of your main game loop)
      }
     {Get Controller Data}
+    DrawGame()
     ReadController(0)
     ReadController(1)
 
@@ -98,28 +99,37 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
 
     if (BulletHealth < 16 and HealthBoostGranted == false)
       if CheckCollision(@playerPos,@HealthBoost) and playerState[5]
-        HealthBar:=(HealthBar + 50)
+        HealthBar[0]:=(HealthBar + 50)
         if HealthBar>144
           HealthBar:=144
         HealthBoostGranted:=true
+      if CheckCollision(@playerPos[4],@HealthBoost) and playerState[14]
+          HealthBar[1]:=(HealthBar + 50)
+        if HealthBar>144
+          HealthBar:=144
 
 
     if(BulletHealth > 16)
-      collision:=CheckCollision(@HitBox,@BulletB)
-      if collision==true
+      if CheckCollision(@HitBoxes,@BulletB)
         if playerState[7] == false
           HealthBar[0]:=(HealthBar[0] - 2)
+      if CheckCollision(@HitBoxes[4],@BulletB)
+        if playerState[16] == false
+           HealthBar[1]:=(HealthBar[1] - 2)
+
+
+
     if(BulletHealth > 16)
-      if CheckCollision(@playerPos,@BulletB)
+      if CheckCollision(@playerPos[4],@BulletB)
         if playerState[5]
           BulletHealth:=(BulletHealth - 15)
         if playerState[6]
           BulletHealth:=(BulletHealth - 30)
 
-    DrawGame()
+
 
     ''It is highly recommended that you include the following code in your game
-      Frame:=getct()
+    Frame:=getct()
       FrameRate:=FrameTime*300_000 - abs(StartTime-Frame)   'Calculate the number of clock pulses remaining (that you need to pause for) to hit the target frame rate (specified by your FrameTime constant)
       if FrameRate<=0                                 'If the loop has taken more than the target frame time, display warning message. If you see this message, you need to increase the value of your FrameTime constant or decrease the amount of code (especially debug commands) running in your game's main repeat loop
         debug(`screen set 384 600 red text 20 'Frame loop took longer than 100ms!!!')              '
@@ -230,32 +240,32 @@ pub getPlayerState(player) | p, pos[4], i
 
     case_fast LJoyX[p]
        0..20  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-16 <#740
-        'HitBox[x]:=0#> HitBox[x]-16 <#740
+        HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]-16 <#740
       21..30  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-8 <#740
-        'HitBox[x]:=0#> HitBox[x]-8 <#740                            'Added a HitBox that moves whenever Momot moves'
+        HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]-8 <#740                            'Added a HitBox that moves whenever Momot moves'
       31..40  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-4 <#740
-        'HitBox[x]:=0#> HitBox[x]-4 <#740
+        HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]-4 <#740
       '41-60 is joystick deadband (X position doesn't change)
       61..70  : playerPos[x+4*p]:=0#> playerPos[x+4*p]+4 <#740
-        'HitBox[x]:=0#> HitBox[x]+4 <#740
+        HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]+4 <#740
       71..80  : playerPos[x+4*p]:=0#> playerPos[x+4*p]+8 <#740
-        'HitBox[x]:=0#> HitBox[x]+8 <#740
+        HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]+8 <#740
       81..100 : playerPos[x+4*p]:=0#> playerPos[x+4*p]+16 <#740
-        'HitBox[x]:=0#> HitBox[x]+16 <#740
+        HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]+16 <#740
     case_fast LJoyY[p]
       0..20  : playerPos[y+4*p]:=64#> playerPos[y+4*p]-16 <#312
-        'HitBox[y]:=64#> HitBox[y]-16 <#312
+        HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]-16 <#312
       21..30  : playerPos[y+4*p]:=64#> playerPos[y+4*p]-8 <#312
-        'HitBox[y]:=64#> HitBox[y]-8 <#312
+        HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]-8 <#312
       31..40  : playerPos[y+4*p]:=64#> playerPos[y+4*p]-4 <#312
-        'HitBox[y]:=64#> HitBox[y]-4 <#312
+        HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]-4 <#312
       '41-60 is joystick deadband (Y position doesn't change)
       61..70  : playerPos[y+4*p]:=64#> playerPos[y+4*p]+4 <#312
-        'HitBox[y]:=64#> HitBox[y]+4 <#312
+        HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]+4 <#312
       71..80  : playerPos[y+4*p]:=64#> playerPos[y+4*p]+8 <#312
-        'HitBox[y]:=64#> HitBox[y]+8 <#312
+        HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]+8 <#312
       81..100 : playerPos[y+4*p]:=64#> playerPos[y+4*p]+16 <#312
-        'HitBox[y]:=64#> HitBox[y]+16 <#312
+        HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]+16 <#312
 
 
 
@@ -399,16 +409,16 @@ pub MomotMotion()
     waitms(50#> 600/deltax[0] <#333)    'Wait between 33ms - 333ms (speed scaled based on distance moved)
 
 
-pub DefineCollisionAreas() | i          'Make arrays for each entity's boundary box's coordinate info [x0,y0,width,height], where x0 and y0 are the upper left pixel of the box
-                                     'e.g., Mario[x] is x-position of upper left pixel, Mario[y] is y-position of upper left pixel, Mario[width] is Mario's overall height, Mario[height] is Mario's overall width (uncomment lines in CheckCollision to see red bounding boxes)
-  playerPos[x]:=MOMOT_INIT[x]                      'Starting Mario x position (will probably be overwritten by current joystick pot value soon)
-  playerPos[y]:=MOMOT_INIT[y]                      'Starting Mario y position (upper left corner of his top half sprite)
-  playerPos[width]:=MOMOT_INIT[width]                   'Width of Mario's character (32 since we're displaying the 16x16 sprite image at 2x scale)
+pub DefineCollisionAreas() | i
+
+  playerPos[x]:=MOMOT_INIT[x]
+  playerPos[y]:=MOMOT_INIT[y]
+  playerPos[width]:=MOMOT_INIT[width]                   '
   playerPos[height]:=MOMOT_INIT[height]
 
-  playerPos[x+4]:=GARNER_INIT[x]                      'Starting Mario x position (will probably be overwritten by current joystick pot value soon)
-  playerPos[y+4]:=GARNER_INIT[y]                      'Starting Mario y position (upper left corner of his top half sprite)
-  playerPos[width+4]:=GARNER_INIT[width]                   'Width of Mario's character (32 since we're displaying the 16x16 sprite image at 2x scale)
+  playerPos[x+4]:=GARNER_INIT[x]
+  playerPos[y+4]:=GARNER_INIT[y]
+  playerPos[width+4]:=GARNER_INIT[width]
   playerPos[height+4]:=GARNER_INIT[height]
 
   BulletB[0]:=700                     'Starting Goomba x position (far right of screen)
@@ -417,13 +427,16 @@ pub DefineCollisionAreas() | i          'Make arrays for each entity's boundary 
   BulletB[3]:=64                  'Height of Mario's character (64 since we're displaying two 16x16 sprite images at 2x scale)                     'Height of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
 
 
-  HitBox[0]:=116
-  HitBox[1]:=128
-  HitBox[2]:=64
-  HitBox[3]:=96
+  HitBoxes[x]:=MOMOT_INIT[x]+16
+  HitBoxes[y]:=MOMOT_INIT[y]
+  HitBoxes[width]:=64
+  HitBoxes[height]:=MOMOT_INIT[height]
 
-  repeat i from 0 to 7
-    playerHit[i]:=playerPos[i]
+  HitBoxes[x+4]:=GARNER_INIT[x]+16
+  HitBoxes[y+4]:=GARNER_INIT[y]
+  HitBoxes[width+4]:=64
+  HitBoxes[height+4]:=GARNER_INIT[height]
+
 
   HealthBoost[0]:=500
   HealthBoost[1]:=250
@@ -508,7 +521,8 @@ pub DrawBackground() | i,j
       debug(`screen set (`(i), 640) sprite (201, 0, 2))
       debug(`screen set (`(i), 704) sprite (201, 0, 2))
 
-  debug(`screen set 96 576 color $DB1818 box 128 24)
+  debug(`screen set 88 576 color $DB1818 box 144 24)
+  debug(`screen set 88 528 color $DB1818 box 144 24)
   debug(`screen set `(16+(HealthBar[0] / 2)) 576 color $1BDB18 box `(HealthBar[0]) 24)   'Used AI to figure out how to make the healthbar go from left to right'
   debug(`screen set `(16+(HealthBar[1] / 2)) 528 color $1BDB18 box `(HealthBar[1]) 24)
 
@@ -517,9 +531,17 @@ pub DrawBackground() | i,j
 pub SpawnActors()
     Momot := 100                                  'Starting sprite number for Momot's bottom half image
     MomotOpacity:=255
-
     Garner := 0                                 'Starting sprite number for Momot's bottom half image
     GarnerOpacity:=255
+    playerPos[x]:=MOMOT_INIT[x]
+    playerPos[y]:=MOMOT_INIT[y]
+    playerPos[width]:=MOMOT_INIT[width]                   '
+    playerPos[height]:=MOMOT_INIT[height]
+
+    playerPos[x+4]:=GARNER_INIT[x]
+    playerPos[y+4]:=GARNER_INIT[y]
+    playerPos[width+4]:=GARNER_INIT[width]
+    playerPos[height+4]:=GARNER_INIT[height]
 
     HealthBar[0]:=144
     HealthBar[1]:=144
@@ -579,8 +601,8 @@ StringAddress long @string0, @string1, @string2, @string3        'Make a list/ar
 
 {GAME STORAGE}
   {Spawn Locations}
-MOMOT_INIT  long 100, 128, 32, 64
-GARNER_INIT long 128, 50, 32, 64
+MOMOT_INIT  long 100, 284, 96, 96
+GARNER_INIT long 100, 154, 96, 96
 con 'Your game must include the following two methods in order to use the Wii Classic Controller Pro
 
 pub SetupController(controller)               ''Set up the I2C interface through which the Wii Classic Controller Pro and the P2 chip communicate
