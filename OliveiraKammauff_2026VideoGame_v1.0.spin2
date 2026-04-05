@@ -6,7 +6,7 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
   RJoyXMin=4, RJoyXMax=252, RJoyYMin=4, RJoyYMax=252, LJoyXMin=2, LJoyXMax=254, LJoyYMin=4, LJoyYMax=252 'Your Wii Controller probably uses these default range values, but not all of them have been tested. You can use the Wii Controller Tester program to verify exactly what values your controller outputs
   #0, x, y, width, height             '#0 resets the automatic constant counter number to 0 (just in case it has been changed by preceding unspecified constants), so here x=0, y=1, width=2, height=3 which is convenient for collision definitions arrays e.g., Momot[x] is the same as Momot[0], Momot[y] is the same as Momot[1], etc. (and for most people, it's easier to remember that the x index holds the x position value rather than the 0th index holds the x value!-)
   FrameTime=100                        'Set your target frame duration/period in milliseconds (i.e., frame rate). This value should probably be between around 50-100ms, i.e. the screen should be cleared and completely redrawn every 50-100ms. If you set your frame rate/frequency too high (i.e., set this FrameTime/period value too low) and don't have at least around 15ms of pause time between each loop, then the USB interface through which the P2 talks to your computer may get clobberred and bogged down, which can result in strange behavior such as the controller data seeming to lag way behind, appearing to make characters move on their own or long after the controls were pressed.
-  CollisionDebugMode=true            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
+  CollisionDebugMode=false            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
 
   {SPRITE NAMES}
   #100 'Explaining the above comment quickly; spin2 auto increments constants w/out definitions,
@@ -48,9 +48,9 @@ var                                   'Declare global variables in this block, w
   long deltax[2], x_prev[2], y_prev[2], LJoyX[2], LJoyY[2], collision[2], HealthBar[2]
   long Momot, MomotRot, MomotMoving, MomotOpacity, MomotJumping, MomotPunching, PunchRight, MomotKicking, MomotBlocking
 
-  long Garner, GarnerRot, GarnerMoving, GarnerOpacity, GarnerJumping, GarnerThrowing, GarnerBlocking
+  long Garner, GarnerRot, GarnerMoving, GarnerOpacity, GarnerJumping, GarnerThrowing, GarnerBlocking, GGAtt, GGHAtt, GGBATT[4], GGHeATT[4]
 
-  long BulletHealth, BulletRot, HealthBoostGranted                                    '
+  long BulletHealth, BulletRot, HealthBoostGranted, PikminHealth[3], Pikmin[6]                                   '
   long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay, Frame                               'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
   'Create an empty array of 100 longs for each Cog
   'so that a Spin interpreter running on each has enough scratchpad RAM space
@@ -72,7 +72,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
   cogspin(1,MomotMotion(),@Stack1)
   cogspin(2, GarnerMotion(),@Stack2)                       'Frame rate not good; run in main loop
   cogspin(3, EnemyMotion(),@Stack3)                'Start up Cog 1 and tell it to run the MarioMotion method in parallel to what's already running on Cog 0
-  'cogspin(4, readControllersLoop(), @Stack4)
+  cogspin(4, PikminMotion(), @Stack4)
   cogspin(7,DebugDisplay(),@Stack7)               'Start up Cog 7 and tell it to run the DebugDisplay method in parallel to what's going on on all of the other cogs (Note: You are not required to have this feature in your final game i.e., if you need to use Cog 7 for something else)
   Momot:=100
   'DrawBackground()
@@ -91,23 +91,26 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     ReadController(1)
 
     {Update Game State}
-    getPlayerState(1)
-    getPlayerState(2)
+
+    if HealthBar[0] > 0
+      getPlayerState(1)
+    if HealthBar[1] > 0
+      getPlayerState(2)
 
 
-    {Collision Check}
+    {Collision Checks}
 
     if (BulletHealth < 16 and HealthBoostGranted == false)
       if CheckCollision(@playerPos,@HealthBoost) and playerState[5]
         HealthBar[0]:=(HealthBar + 50)
-        if HealthBar>144
-          HealthBar:=144
+        if HealthBar[0]>144
+          HealthBar[0]:=144
         HealthBoostGranted:=true
       if CheckCollision(@playerPos[4],@HealthBoost) and playerState[14]
           HealthBar[1]:=(HealthBar + 50)
-        if HealthBar>144
-          HealthBar:=144
-
+        if HealthBar[1]>144
+          HealthBar[1]:=144
+        HealthBoostGranted:=true
 
     if(BulletHealth > 16)
       if CheckCollision(@HitBoxes,@BulletB)
@@ -117,15 +120,45 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
         if playerState[16] == false
            HealthBar[1]:=(HealthBar[1] - 2)
 
+    if(PikminHealth[0] > 16)
+      if CheckCollision(@HitBoxes,@Pikmin)
+        if playerState[7] == false
+          HealthBar[0]:=(HealthBar[0] - 5)
+      if CheckCollision(@HitBoxes[4],@Pikmin)
+        if playerState[16] == false
+           HealthBar[1]:=(HealthBar[1] - 5)
+
+    if(PikminHealth[0] > 16)
+      if CheckCollision(@playerPos,@Pikmin)
+        if playerState[5]
+          PikminHealth[0]:=(PikminHealth[0] - 25)
+        if playerState[6]
+          PikminHealth[0]:=(PikminHealth[0] - 40)
+      if CheckCollision(@GGBATT, @Pikmin)
+        if playerState[14]
+          PikminHealth[0]:=(PikminHealth[0] - 15)
+      if CheckCollision(@GGHeATT, @Pikmin)
+        if playerState[15]
+          PikminHealth[0]:=(PikminHealth[0] - 50)
 
 
     if(BulletHealth > 16)
-      if CheckCollision(@playerPos[4],@BulletB)
+      if CheckCollision(@playerPos,@BulletB)
         if playerState[5]
           BulletHealth:=(BulletHealth - 15)
         if playerState[6]
           BulletHealth:=(BulletHealth - 30)
+      if CheckCollision(@GGBATT, @BulletB)
+        if playerState[14]
+          BulletHealth:=(BulletHealth - 10)
+      if CheckCollision(@GGHeATT, @BulletB)
+        if playerState[15]
+          BulletHealth:=(BulletHealth - 40)
 
+
+
+    if HealthBar[0] < 0 and HealthBar[1] < 0
+      ShowInstructions()
 
 
     ''It is highly recommended that you include the following code in your game
@@ -274,7 +307,7 @@ pub getPlayerState(player) | p, pos[4], i
     {Player Moving}
 
     {Player Pivoting}
-    if playerPos[x+4*p]<>x_prev[p]
+    if playerPos[x+4*p]<>x_prev[p] or playerPos[y+4*p]<>y_prev[p]    'Making sure Motion methods are activated when the players move horizontally and vertically'
       playerState[2+9*p]:=true            'moving state
       if playerPos[x+4*p]>x_prev[p]
         playerState[1+9*p]:=0             'rotation state
@@ -311,7 +344,7 @@ pub getPlayerState(player) | p, pos[4], i
     if playerState[5+9*p]
       case_fast p
         0 : MomotPunch()
-        1 : GarnerJump()
+        1 : GarnerBaseAttack()
       waitms(50#> 600/deltax[p] <#333)
 
     {Player Heavy Attack}
@@ -326,63 +359,36 @@ pub getPlayerState(player) | p, pos[4], i
     if playerState[6+9*p]
       case_fast p
         0 : MomotKick()
-        1 : GarnerJump()
+        1 : GarnerHeavyAttack()
       waitms(50#> 600/deltax[p] <#333)
 
     {Player Block}
 
     if (data[7+8*p].[4] == 0) and (playerState[7+9*p] == false)       'playerState[6] is the heavy attack state
       playerState[7+9*p] := true
-
+      case_fast p
+        0 : playerState[0] := 100            'spriteState'
+        1 : playerState[9] := 0
 
     if playerState[7+9*p]
       case_fast p
         0 : MomotBlock()
-        1 : GarnerJump()
-      waitms(50#> 600/deltax[p] <#333)
+        1 : GarnerBlock()
 
+   {Garner Attack Hitboxes}
+    if p == 1
+     case_fast playerState[10]
+       0:
+        GGBATT[x]:=playerPos[x+4*p]+80
+        GGBATT[y]:=playerPos[y+4*p]-48
+        GGHeATT[x]:=playerPos[x+4*p]+80
+        GGHeATT[y]:=playerPos[y+4*p]-48
+       1:
+        GGBATT[x]:=playerPos[x+4*p]-64
+        GGBATT[y]:=playerPos[y+4*p]-48
+        GGHeATT[x]:=playerPos[x+4*p]-64
+        GGHeATT[y]:=playerPos[y+4*p]-48
 
-    {
-    'Rewrite new states
-    case_fast player
-      1 : p:= 0                'This is the player value used in this method: p = player - 1
-        ' rewrite all state and position parameters here for Momot
-        {
-        repeat i from 0 to 7
-          data[i]:=d[i]
-          }
-        repeat i from 0 to 3
-          MomotPos[i]:=pos[i]
-
-        Momot:=state[0]         'Sprite number
-        MomotRot:=state[1]      'Rotation val
-        MomotMoving:=state[2]   'Moving State
-        MomotOpacity:=state[3]  'Opacity
-        MomotJumping:=state[4]  'Jumping state
-        MomotPunching:=state[5] 'punching state
-        MomotKicking:=state[6]  'kicking state
-        MomotBlocking:=state[7] 'blocking state
-        'state[8]:=MomotHit     'Hitstun state
-
-      2 : p:= 1
-        ' assign all state and position parameters here for Garner
-        {
-        repeat i from 0 to 7
-          dataP2[i]:=d[i]
-          }
-        repeat i from 0 to 3
-          playerPos[i]:=pos[i]
-        Garner:=state[0]         'Sprite number
-        GarnerRot:=state[1]      'Rotation val
-        GarnerMoving:=state[2]   'Moving State
-        GarnerOpacity:=state[3]  'Opacity
-        GarnerJumping:=state[4]  'Jumping state
-        GarnerThrowing:=state[5] 'punching state
-        'GarnerKicking:=state[6]  'unused state
-        GarnerBlocking:=state[7] 'blocking state
-        'state[8]:=MomotHit     'Hitstun state
-
-        }
 
 pub GarnerMotion()                    'Cycle through Mario's leg sprite images whenever he's moving to make it look like he's running
   repeat
@@ -427,13 +433,28 @@ pub DefineCollisionAreas() | i
   BulletB[3]:=64                  'Height of Mario's character (64 since we're displaying two 16x16 sprite images at 2x scale)                     'Height of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
 
 
-  HitBoxes[x]:=MOMOT_INIT[x]+16
-  HitBoxes[y]:=MOMOT_INIT[y]
+  GGBATT[0]:=GARNER_INIT[x]+80
+  GGBATT[1]:=GARNER_INIT[y]-48
+  GGBATT[2]:=80
+  GGBATT[3]:=48
+
+  GGHeATT[0]:=GARNER_INIT[x]+80
+  GGHeATT[1]:=GARNER_INIT[y]-32
+  GGHeATT[2]:=80
+  GGHeATT[3]:=24
+
+  Pikmin[0]:=750
+  Pikmin[1]:=125
+  Pikmin[2]:=32
+  Pikmin[3]:=90
+
+  HitBoxes[x]:=playerPos[x]+16
+  HitBoxes[y]:=playerPos[y]
   HitBoxes[width]:=64
   HitBoxes[height]:=MOMOT_INIT[height]
 
-  HitBoxes[x+4]:=GARNER_INIT[x]+16
-  HitBoxes[y+4]:=GARNER_INIT[y]
+  HitBoxes[x+4]:=playerPos[x+4]+16
+  HitBoxes[y+4]:=playerPos[y+4]
   HitBoxes[width+4]:=64
   HitBoxes[height+4]:=GARNER_INIT[height]
 
@@ -521,10 +542,20 @@ pub DrawBackground() | i,j
       debug(`screen set (`(i), 640) sprite (201, 0, 2))
       debug(`screen set (`(i), 704) sprite (201, 0, 2))
 
-  debug(`screen set 88 576 color $DB1818 box 144 24)
-  debug(`screen set 88 528 color $DB1818 box 144 24)
-  debug(`screen set `(16+(HealthBar[0] / 2)) 576 color $1BDB18 box `(HealthBar[0]) 24)   'Used AI to figure out how to make the healthbar go from left to right'
-  debug(`screen set `(16+(HealthBar[1] / 2)) 528 color $1BDB18 box `(HealthBar[1]) 24)
+  debug(`screen set 88 600 blue text 18 'Momot')
+  debug(`screen set 88 552 blue text 18 'Garner')
+
+  if HealthBar[0] > 0
+    debug(`screen set 88 576 color $DB1818 box 144 24)
+    debug(`screen set `(16+(HealthBar[0] / 2)) 576 color $1BDB18 box `(HealthBar[0]) 24)     'Used AI to figure out how to make the healthbar go from left to right'
+  else
+    debug(`screen set 88 576 red text 18 'You Died...')
+                                                                                             'These two if statements display the healthbars of the two players which are replaced by the message,
+  if HealthBar[1] > 0                                                                           '"You died..." when the players run out of health
+    debug(`screen set 88 528 color $DB1818 box 144 24)
+    debug(`screen set `(16+(HealthBar[1] / 2)) 528 color $1BDB18 box `(HealthBar[1]) 24)
+  else
+    debug(`screen set 88 528 red text 18 'You Died...')
 
   debug(`screen set (upper-left_X_coordinate, upper-left_Y_coordinate) sprite (SpriteNumber, Rotation, ScalingFactor, SpriteOpacity))
 
@@ -546,20 +577,30 @@ pub SpawnActors()
     HealthBar[0]:=144
     HealthBar[1]:=144
     BulletHealth:=255
-    BulletRot:=1                               'Start with Mario fully opaque (the 4th parameter in a debug sprite command adjusts transparency between 255 (default) and 0, which is fully transparent/invisible
+    BulletRot:=1
+    Pikmin[0]:=750
+    Pikmin[1]:=125
+    PikminHealth[0]:=255                               'Start with Mario fully opaque (the 4th parameter in a debug sprite command adjusts transparency between 255 (default) and 0, which is fully transparent/invisible
     PunchRight := true
+    GGAtt:=25
+    GGHAtt:= 27
     HealthBoostGranted := false
 pub DrawActors()                'Draw all of the Characters on screen that change (players, enemies, items, health status)
     {DRAWING SPRITES}
             'Sprites's: X position,  Y position   Sprite's: image #,  rotation, scaling, opacity
     'Print Momot's bottom sprite on screen
-    debug(`screen set (`(playerPos[x]), `(playerPos[y])) sprite (`(Momot), `(playerState[1]), 3, `(MomotOpacity))                      'Momot
-
-    debug(`screen set (`(playerPos[x+4]), `(playerPos[y+4])) sprite (`(Garner), `(playerState[10]), 3, `(GarnerOpacity))                  'Garner
+    if HealthBar[0] > 0
+      debug(`screen set (`(playerPos[x]), `(playerPos[y])) sprite (`(Momot), `(playerState[1]), 3, `(MomotOpacity))
+                           'Momot'
+    if HealthBar[1] > 0
+      debug(`screen set (`(playerPos[x+4]), `(playerPos[y+4])) sprite (`(Garner), `(playerState[10]), 3, `(GarnerOpacity))                  'Garner'
 
     if (BulletHealth > 16)
       debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
 
+    if (PikminHealth[0] > 16)
+       debug(`screen set `(Pikmin[0]), `(Pikmin[1])) sprite (29, 0, 3, `(PikminHealth[0]))
+       debug(`screen set `(Pikmin[0]), `(Pikmin[1]-48)) sprite (31, 0, 3, `(PikminHealth[0]))
 
     if (BulletHealth < 16)
       if (HealthBoostGranted == false)
@@ -722,3 +763,57 @@ pub EnemyMotion()
         BulletB[0]:=BulletB[0]+6
         waitms(175)
       BulletRot:= 1
+
+pub PikminMotion() | PikminPosX, PikminPosY
+  PikminPosX := Pikmin[0]
+  PikminPosY := Pikmin[1]
+    repeat
+      if PikminHealth[0] > 16
+        if Pikmin[0] > 16
+          repeat until Pikmin[0]<=PikminPosX-64
+            Pikmin[0]:=Pikmin[0]-16
+            waitms(175)
+        else
+          Pikmin[0]:= 750
+        PikminPosX := Pikmin[0]
+        if Pikmin[1] < 250
+          repeat until Pikmin[1]>=PikminPosY+150
+            Pikmin[1]:=Pikmin[1]+16
+            waitms(175)
+        else
+          repeat until Pikmin[1]<=PikminPosY-150
+            Pikmin[1]:=Pikmin[1]-16
+            waitms(175)
+        PikminPosY := Pikmin[1]
+
+pub GarnerBaseAttack()
+  case Garner
+    GGIC : Garner:=  GGINSTRUCT
+     case playerState[10]
+       0 : debug(`screen set (`(playerPos[x+4] + 64), `(playerPos[y+4])) sprite (`(GGAtt), 0, 3, 255)
+       1 : debug(`screen set (`(playerPos[x+4] - 64), `(playerPos[y+4])) sprite (`(GGAtt), 1, 3, 255)
+     case GGAtt
+        25 : GGAtt := 26
+        26 : GGAtt := 25
+    GGINSTRUCT : Garner := GGIC
+      playerState[14]:=false
+
+pub GarnerHeavyAttack()
+  case Garner
+    GGIC : Garner:=  GGINSTRUCT
+     case playerState[10]
+       0 : debug(`screen set (`(playerPos[x+4] + 64), `(playerPos[y+4])) sprite (`(GGHAtt), 0, 3, 255)
+       1 : debug(`screen set (`(playerPos[x+4] - 64), `(playerPos[y+4])) sprite (`(GGHAtt), 1, 3, 255)
+     case GGHAtt
+        27 : GGHAtt := 28
+        28 : GGHAtt := 27
+    GGINSTRUCT : Garner := GGIC
+      playerState[15]:=false
+
+pub GarnerBlock()
+  if (data[15].[4] == 0)
+    Garner := 10
+    playerState[16] := true
+  else
+    Garner := GGIC
+    playerState[16] := false
