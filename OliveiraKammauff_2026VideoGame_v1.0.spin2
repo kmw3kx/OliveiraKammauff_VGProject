@@ -25,6 +25,7 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
   MMFLOAT ' [107]; midair crouch
   MM8 ' [108];
   MMFALL ' [109] ' coming back down to earth
+  MMHURT = 128
         'Can be continued if desired
   {Garner (GG) Sprites} ' [#-#] inclusive; Explanation
   #0
@@ -95,8 +96,6 @@ var                                   'Declare global variables in this block, w
 
   long Garner, GarnerRot, GarnerMoving, GarnerOpacity, GarnerJumping, GarnerThrowing, GarnerBlocking, GGAtt, GGHAtt, GGBATT[4], GGHeATT[4]
 
-  long EnemyPos[6], EnemyHealth[3], Enemies[3], KillCounter, ActiveEnemies
-
   long BulletHealth, BulletRot, HealthBoostGranted, PikminHealth[3], Pikmin[6]                                   '
   long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay, Frame                               'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
   'Create an empty array of 100 longs for each Cog
@@ -116,11 +115,17 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
 
   DefineCollisionAreas()              'Call the method that sets up the rectangles around objects that will be used to detect collisions                   'Start out with the EasterEgg mode disabled (i.e, just drawing the blue sky box as the background)
 
+  repeat i from 0 to 18
+    playerState[i]:=false
+
+  playerState[0]:=true
+
+  playerState[8]:=true
   cogspin(1, MomotMotion(),@Stack1)
   cogspin(2, GarnerMotion(),@Stack2)                       'Frame rate not good; run in main loop
   cogspin(3, EnemyMotion(),@Stack3)                'Start up Cog 1 and tell it to run the MarioMotion method in parallel to what's already running on Cog 0
   cogspin(4, PikminMotion(), @Stack4)
-  cogspin(5, KonamiCode(), @Stack5)                        'Just deals with the gravity calculations
+  cogspin(5, KonamiCodeEasterEgg(), @Stack5)                        'Just deals with the gravity calculations
   cogspin(7,DebugDisplay(),@Stack7)               'Start up Cog 7 and tell it to run the DebugDisplay method in parallel to what's going on on all of the other cogs (Note: You are not required to have this feature in your final game i.e., if you need to use Cog 7 for something else)
   Momot:=100
   'DrawBackground()
@@ -162,19 +167,25 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
 
     if(BulletHealth > 16)
       if CheckCollision(@HitBoxes,@BulletB)
-        if playerState[7] == false
-          HealthBar[0]:=(HealthBar[0] - 1)
+        if playerState[7] == false and playerState[0] == true
+          HealthBar[0]:=(HealthBar[0] - 2)
+          playerState[8]:=true
       if CheckCollision(@HitBoxes[4],@BulletB)
-        if playerState[16] == false
+        if playerState[16] == false and playerState[9] == true
            HealthBar[1]:=(HealthBar[1] - 2)
+           playerState[17]:=true
 
     if(PikminHealth[0] > 16)
       if CheckCollision(@HitBoxes,@Pikmin)
-        if playerState[7] == false
-          HealthBar[0]:=(HealthBar[0] - 2)
+        if playerState[7] == false and playerState[0] == true
+          HealthBar[0]:=(HealthBar[0] - 5)
+          playerState[8]:= true
       if CheckCollision(@HitBoxes[4],@Pikmin)
-        if playerState[16] == false
-           HealthBar[1]:=(HealthBar[1] - 4)
+        if playerState[16] == false and playerState[0] == true
+           HealthBar[1]:=(HealthBar[1] - 5)
+           playerState[17]:=true
+
+    {Attacking Enemies}
 
     if(PikminHealth[0] > 16)
       if CheckCollision(@playerPos,@Pikmin)
@@ -182,12 +193,13 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
           PikminHealth[0]:=(PikminHealth[0] - 25)
         if playerState[6]
           PikminHealth[0]:=(PikminHealth[0] - 40)
+
       if CheckCollision(@GGBATT, @Pikmin)
         if playerState[14]
           PikminHealth[0]:=(PikminHealth[0] - 15)
       if CheckCollision(@GGHeATT, @Pikmin)
         if playerState[15]
-          PikminHealth[0]:=(PikminHealth[0] - 50)
+          PikminHealth[0]:=(PikminHealth[0] - 30)
 
 
     if(BulletHealth > 16)
@@ -219,7 +231,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
       RawLoopTime:=abs(StartTime-getct())             'Record total loop time (not counting debug delay below) units=1/300_000_000=3.3333 nanoseconds
 
 
-pub DebugDisplay()                                  'Use to display variables on the screen (Note: You could put this onto a separate cog if you need for your main game repeat loop on Cog 0 to run faster)
+pub DebugDisplay() | i                                  'Use to display variables on the screen (Note: You could put this onto a separate cog if you need for your main game repeat loop on Cog 0 to run faster)
   debug(`term term1 pos 867 0 size 28 12 textsize 18 color cyan)    'Create terminal window to display variables to help with debugging or to display a score
   DisplayDelay:=clkfreq/5+getct()                   'Store a system clock "Tick" time that is 0.2 seconds in the future
 
@@ -236,10 +248,13 @@ pub DebugDisplay()                                  'Use to display variables on
       debug(`term1 'L Stick P2= `(dataP2[0]) `(dataP2[2])',10)
       debug(`term1 'R Stick P2 = `(dataP2[1]) `(dataP2[3])',10)
 
-      debug(`term1 'MomotJump: deltay:`(deltay[0]); height: `(heightOffGround)',10
-      )
-      debug(`term1 'LoopTime = `(LoopTime)' 'ï¿½s',10)
-      debug(`term1 'Frame Wait Time = `(FrameWaitTime)' 'ï¿½s',10)
+      debug(`term1 'PlayerState:',10)
+      repeat i from 0 to 18
+        debug(`term1 '`(playerState[i]) ')
+      debug(`term1 10)
+
+      debug(`term1 'LoopTime = `(LoopTime)' 'µs',10)
+      debug(`term1 'Frame Wait Time = `(FrameWaitTime)' 'µs',10)
 
       DisplayDelay:=DisplayDelay+clkfreq/5          'Add another 0.2 second worth of system clock pulses to DisplayDelay time (for the next delay)
 
@@ -262,6 +277,7 @@ pub getPlayerState(player) | p, pos[4], i
 
     LJoyX[p]:=0#>(data[0+8*p]-LJoyXMin)*100/(LJoyXMax-LJoyXMin)<#100   'Scale the left joystick's analog X and Y ranges to be between 0-100
     LJoyY[p]:=0#>(data[2+8*p]-LJoyYMin)*100/(LJoyYMax-LJoyYMin)<#100   'Note that enclosing a computation or result between #> and <# in Spin2 limits the minimum and maximum value (in this case to beween 0 and 100)
+
     if playerState[5+9*p]==false and playerState[6+9*p]==false and playerState[7+9*p]==false and playerState[8+9*p]==false
       {if player is not attacking, blocking, or being hit, allow them to move}
       case_fast LJoyX[p]
@@ -292,7 +308,7 @@ pub getPlayerState(player) | p, pos[4], i
           'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]+8 <#312
         81..100 : playerz[p]:=64#> playerz[p]+16 <#312
           'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]+16 <#312
-    {Offset the }
+    {Offset the player pos from the playerz}
     playerPos[y+4*p]:= heightOffGround[p] + playerz[p]
 
     {Set hurtbox to the corresponing playerPos}
@@ -318,25 +334,12 @@ pub getPlayerState(player) | p, pos[4], i
     {Player Jumping}
     if (data[7+8*p].[6] == 0) and (playerState[4+9*p] == false)       'state[4] is the jumping state
       playerState[4+9*p] := true                             '       AI Helped with the Jumping Logic, specifically on how to make it one motion with one press of B'
-      { Attempting to move this to player motion
-      case_fast p                                                     'Other movements followed similar logic'
-        0 : playerState[0] := 100            'spriteState'
-        1 : playerState[9] := 0
 
-    if playerState[4+9*p]
-      case_fast p
-        0 : MomotJump()
-        1 : GarnerJump()
-      waitms(50#> 600/deltax[p] <#333)
-      }
 
     {Player Basic Attack}
 
     if (data[7+8*p].[5] == 0) and (playerState[5+9*p] == false)       'playerState[5] is the attack state
       playerState[5+9*p] := true
-      case_fast p
-        0 : playerState[0] := 100            'spriteState'
-        1 : playerState[9] := 0
 
 
     if playerState[5+9*p]
@@ -349,9 +352,7 @@ pub getPlayerState(player) | p, pos[4], i
 
     if (data[7+8*p].[3] == 0) and (playerState[6+9*p] == false)       'playerState[6] is the heavy attack state
       playerState[6+9*p] := true
-      case_fast p
-        0 : playerState[0] := 100            'spriteState'
-        1 : playerState[9] := 0
+
 
 
     if playerState[6+9*p]
@@ -364,9 +365,6 @@ pub getPlayerState(player) | p, pos[4], i
 
     if (data[7+8*p].[4] == 0) and (playerState[7+9*p] == false)       'playerState[6] is the heavy attack state
       playerState[7+9*p] := true
-      case_fast p
-        0 : playerState[0] := 100            'spriteState'
-        1 : playerState[9] := 0
 
     if playerState[7+9*p]
       case_fast p
@@ -387,10 +385,35 @@ pub getPlayerState(player) | p, pos[4], i
         GGHeATT[x]:=playerPos[x+4*p]-64
         GGHeATT[y]:=playerPos[y+4*p]-48
 
-pub MomotMotion() | p
+pub MomotMotion() | p, i
 {Handle the physics, behavior, and sprite logic for Momot}
 p:=0
+i:=0
   repeat
+    if playerState[8+9*p]==true ' Momot hit
+      'hitstun
+      playerState[0+9*p]:= false 'Make momot intangible
+      Momot:= MMHURT
+      repeat 5
+        case_fast MomotOpacity
+          255 : MomotOpacity:= 0
+          0 : MomotOpacity:= 255
+        waitms(FrameTime)
+      MomotOpacity:= 255
+      Momot:= MM_I
+      playerState[8+9*p]:= false
+
+    if playerState[0+9*p]== false
+      'Blink player while intangible and count blinks
+       case_fast MomotOpacity
+          255 : MomotOpacity:= 0
+          0 : MomotOpacity:= 255
+      i:= i+1
+
+      if i >= 10
+        MomotOpacity:= 255
+        i:=0
+        playerState[0+9*p]:= true
 
     if playerState[4+9*p] ' Jumping
       case_fast p
@@ -400,8 +423,7 @@ p:=0
     if playerState[2+9*p]==false
       {Idle State}
       Momot:= MM_I
-      repeat until playerState[2+9*p]==true 'Repeat until moving
-        waitms(FrameTime)
+      waitms(FrameTime)
 
     if playerState[2+9*p]==true
     {Moving animation}
@@ -570,7 +592,7 @@ pub DefineCollisionAreas() | i
   playerz[1]:=GARNER_INIT[y]
 
   BulletB[0]:=700                     'Starting Goomba x position (far right of screen)
-  BulletB[1]:=50 + getrnd()+//200                      'Starting Goomba y position
+  BulletB[1]:=198                      'Starting Goomba y position
   BulletB[2]:=64                      'Width of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
   BulletB[3]:=64                  'Height of Mario's character (64 since we're displaying two 16x16 sprite images at 2x scale)                     'Height of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
 
@@ -650,8 +672,8 @@ pub PauseGame(player)                                   'If player presses the S
 
 pub DrawGame()                  'Responsible for rendering the sprites to the debug screen so that the game is visible
     DrawBackground()
+
     DrawActors()
-    DrawLevel(1)
 
 pub DrawBackground() | i,j
 
@@ -705,13 +727,11 @@ pub SpawnActors()
 
     HealthBar[0]:=144
     HealthBar[1]:=144
-    KillCounter:=0
-    {Enemy Initial States}
     BulletHealth:=255
     BulletRot:=1
     Pikmin[0]:=750
-    Pikmin[1]:=50 + getrnd()+//200
-    PikminHealth[0]:=255
+    Pikmin[1]:=125
+    PikminHealth[0]:=255                               'Start with Mario fully opaque (the 4th parameter in a debug sprite command adjusts transparency between 255 (default) and 0, which is fully transparent/invisible
     PunchRight := true
     GGAtt:=25
     GGHAtt:= 27
@@ -737,28 +757,6 @@ pub DrawActors()                'Draw all of the Characters on screen that chang
       if (HealthBoostGranted == false)
         debug(`screen set 500, 250) sprite (133, 0, 3, 255))
 
-
-
-pub DrawLevel(level)
-  case_fast level
-    1 :
-      if (BulletHealth > 16)
-        debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
-      else
-        KillCounter:=KillCounter + 1
-        if KillCounter < 10
-          BulletHealth:= 255
-          BulletB[0]:=700
-          BulletB[1]:= 50 + getrnd()+//200
-      if (PikminHealth[0] > 16)
-        debug(`screen set `(Pikmin[0]), `(Pikmin[1])) sprite (29, 0, 3, `(PikminHealth[0]))
-        debug(`screen set `(Pikmin[0]), `(Pikmin[1]-48)) sprite (31, 0, 3, `(PikminHealth[0]))
-      else
-        KillCounter:=KillCounter + 1
-        if KillCounter < 10
-          PikminHealth[0] := 255
-          Pikmin[0]:=750
-          Pikmin[1]:=50 + getrnd()+//200
 
 pub ShowInstructions() | i
   debug(`term Instructions pos 140 100 size 75 24 textsize 12 color black white backcolor white)  'Create a new debug terminal window called called "Instructions" at x=140 y=100 on the PC screen (overlaid on plot window)                                                                                            ' that is 75 spaces wide by 10 lines deep with text color=black on white with white background and font size 12
@@ -887,29 +885,30 @@ pub PikminMotion() | PikminPosX, PikminPosY
             waitms(175)
         PikminPosY := Pikmin[1]
 
-pub KonamiCodeEasterEgg(p)
+pub KonamiCodeEasterEgg()
+
 repeat
-  repeat until data[7+8*p].[0] == 0
+  repeat until data[7].[0] == 0
     waitms(FrameTime)
-  repeat until data[6+8*p].[6] == 0
+  repeat until data[6].[6] == 0
     waitms(FrameTime)
-  repeat until data[7+8*p].[0] == 0
+  repeat until data[7].[0] == 0
     waitms(FrameTime)
-  repeat until data[6+8*p].[6] == 0
-    waitms(FrameTime)
-
-  repeat until data[7+8*p].[1] == 0
-    waitms(FrameTime)
-  repeat until data[6+8*p].[7] == 0
-    waitms(FrameTime)
-  repeat until data[7+8*p].[1] == 0
-    waitms(FrameTime)
-  repeat until data[6+8*p].[7] == 0
+  repeat until data[6].[6] == 0
     waitms(FrameTime)
 
-  repeat until data[7+8*p].[6] == 0
+  repeat until data[7].[1] == 0
     waitms(FrameTime)
-  repeat until data[6+8*p].[4] == 0
+  repeat until data[6].[7] == 0
+    waitms(FrameTime)
+  repeat until data[7].[1] == 0
+    waitms(FrameTime)
+  repeat until data[6].[7] == 0
+    waitms(FrameTime)
+
+  repeat until data[7].[6] == 0
+    waitms(FrameTime)
+  repeat until data[6].[4] == 0
     waitms(FrameTime)
   {Konami Code Activated}
   case pvpState
