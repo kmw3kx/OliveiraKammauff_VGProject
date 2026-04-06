@@ -7,7 +7,7 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
   #0, x, y, width, height             '#0 resets the automatic constant counter number to 0 (just in case it has been changed by preceding unspecified constants), so here x=0, y=1, width=2, height=3 which is convenient for collision definitions arrays e.g., Momot[x] is the same as Momot[0], Momot[y] is the same as Momot[1], etc. (and for most people, it's easier to remember that the x index holds the x position value rather than the 0th index holds the x value!-)
 
   FrameTime=100                        'Set your target frame duration/period in milliseconds (i.e., frame rate). This value should probably be between around 50-100ms, i.e. the screen should be cleared and completely redrawn every 50-100ms. If you set your frame rate/frequency too high (i.e., set this FrameTime/period value too low) and don't have at least around 15ms of pause time between each loop, then the USB interface through which the P2 talks to your computer may get clobberred and bogged down, which can result in strange behavior such as the controller data seeming to lag way behind, appearing to make characters move on their own or long after the controls were pressed.
-  CollisionDebugMode=true            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
+  CollisionDebugMode=false            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
 
 
   {PROPERTIES}
@@ -262,39 +262,28 @@ pub getPlayerState(player) | p, pos[4], i
 
     case_fast LJoyX[p]
        0..20  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-16 <#740
-        'HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]-16 <#740
       21..30  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-8 <#740
-        'HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]-8 <#740                            'Added a HitBox that moves whenever Momot moves'
       31..40  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-4 <#740
-        'HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]-4 <#740
-      '41-60 is joystick deadband (X position doesn't change)
       61..70  : playerPos[x+4*p]:=0#> playerPos[x+4*p]+4 <#740
-        'HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]+4 <#740
       71..80  : playerPos[x+4*p]:=0#> playerPos[x+4*p]+8 <#740
-        'HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]+8 <#740
       81..100 : playerPos[x+4*p]:=0#> playerPos[x+4*p]+16 <#740
-        'HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]+16 <#740
+
     case_fast LJoyY[p]
       0..20  : playerz[p]:=64#> playerz[p]-16 <#312
-        'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]-16 <#312
       21..30  : playerz[p]:=64#> playerz[p]-8 <#312
-        'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]-8 <#312
       31..40  : playerz[p]:=64#> playerz[p]-4 <#312
-        'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]-4 <#312
-      '41-60 is joystick deadband (Y position doesn't change)
       61..70  : playerz[p]:=64#> playerz[p]+4 <#312
-        'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]+4 <#312
       71..80  : playerz[p]:=64#> playerz[p]+8 <#312
-        'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]+8 <#312
       81..100 : playerz[p]:=64#> playerz[p]+16 <#312
-        'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]+16 <#312
+
+
     {Offset the }
     playerPos[y+4*p]:= heightOffGround[p] + playerz[p]
 
     {Set hurtbox to the corresponing playerPos}
-    repeat i from x+4*p to y+4*p
-      HitBoxes[i]:=playerPos[i]
 
+    HitBoxes[x+4*p]:= playerPos[x+4*p]+16
+    HitBoxes[y+4*p]:= playerPos[y+4*p]
     {Player State}
 
     {Player Moving}
@@ -417,7 +406,7 @@ pub MomotJump() | p
   deltay[p]:= 50 ' jump v_i
 
   repeat until deltay[p] <= -deltay[p] and heightOffGround[p] <= 0 'max fall speed: -deltay[p]
-    deltay[p] -= 10 'fall accel;
+    deltay[p] -= 25 'fall accel;
     case_fast deltay[p]
       -100..-1 : Momot:=MMRISE
       0 : Momot:=MMFLOAT
@@ -513,7 +502,7 @@ pub GarnerJump() | p
   Garner:= GGLAND
   waitms(1*FrameTime) 'Jumpsquat time
   repeat until deltay[p] <= -deltay[p] and heightOffGround[p] <= 0 'max fall speed: -deltay[p]
-    deltay[p] -= 10 'fall accel;
+    deltay[p] -= 25 'fall accel;
     case_fast deltay[p]
       -100..-1 :
         case Garner
@@ -703,30 +692,30 @@ pub DrawBackground() | i,j
   debug(`screen set (upper-left_X_coordinate, upper-left_Y_coordinate) sprite (SpriteNumber, Rotation, ScalingFactor, SpriteOpacity))
 
 pub SpawnActors()
-    Momot := 100                                  'Starting sprite number for Momot's bottom half image
+    {Player Initial States}
+    Momot := 100
     MomotOpacity:=255
-    Garner := 0                                 'Starting sprite number for Momot's bottom half image
+    Garner := 0
     GarnerOpacity:=255
     playerPos[x]:=MOMOT_INIT[x]
     playerPos[y]:=MOMOT_INIT[y]
     playerPos[width]:=MOMOT_INIT[width]                   '
     playerPos[height]:=MOMOT_INIT[height]
-
     playerPos[x+4]:=GARNER_INIT[x]
     playerPos[y+4]:=GARNER_INIT[y]
     playerPos[width+4]:=GARNER_INIT[width]
     playerPos[height+4]:=GARNER_INIT[height]
-
     heightOffGround[0]:=0
     heightOffGround[1]:=0
-
     HealthBar[0]:=144
     HealthBar[1]:=144
+
+    {Enemy Initial States}
     BulletHealth:=255
     BulletRot:=1
     Pikmin[0]:=750
     Pikmin[1]:=125
-    PikminHealth[0]:=255                               'Start with Mario fully opaque (the 4th parameter in a debug sprite command adjusts transparency between 255 (default) and 0, which is fully transparent/invisible
+    PikminHealth[0]:=255
     PunchRight := true
     GGAtt:=25
     GGHAtt:= 27
@@ -879,3 +868,13 @@ pub PikminMotion() | PikminPosX, PikminPosY
             Pikmin[1]:=Pikmin[1]-16
             waitms(175)
         PikminPosY := Pikmin[1]
+
+
+pub EnemyBehavior(level)  | Enemy Index
+
+case_fast level
+  1:
+    repeat until KillCounter > 10
+      repeat until ActiveEnemies > 3
+        EnemyIndex := getrnd()+//3
+        debug(`screen set `(EnemyPosX[EnemyIndex]), `(EnemyPosY[EnemyIndex])) sprite (Enemies[EnemyIndex], `(BulletRot), 4, `(BulletHealth))
