@@ -7,7 +7,7 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
   #0, x, y, width, height             '#0 resets the automatic constant counter number to 0 (just in case it has been changed by preceding unspecified constants), so here x=0, y=1, width=2, height=3 which is convenient for collision definitions arrays e.g., Momot[x] is the same as Momot[0], Momot[y] is the same as Momot[1], etc. (and for most people, it's easier to remember that the x index holds the x position value rather than the 0th index holds the x value!-)
 
   FrameTime=100                        'Set your target frame duration/period in milliseconds (i.e., frame rate). This value should probably be between around 50-100ms, i.e. the screen should be cleared and completely redrawn every 50-100ms. If you set your frame rate/frequency too high (i.e., set this FrameTime/period value too low) and don't have at least around 15ms of pause time between each loop, then the USB interface through which the P2 talks to your computer may get clobberred and bogged down, which can result in strange behavior such as the controller data seeming to lag way behind, appearing to make characters move on their own or long after the controls were pressed.
-  CollisionDebugMode=false            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
+  CollisionDebugMode=true            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
 
 
   {PROPERTIES}
@@ -87,10 +87,10 @@ var                                   'Declare global variables in this block, w
                                                                                 'upper-left pixel's x-position, upper-left pixel's y-position, overall width, overall height.
   long playerPos[8], playerState[18], playerHit[8], playerz[2]
   {for playerState:
-  [0] Sprite Number (unused), [1] Rotation, [2] Moving, [3] Opacity, [4] Jumping, [5] Punching/Throwing, [6] Kicking, [7] Blocking, [8] Hit}                                                                             'See the DefineCollisionAreas method below.
+  [0] tangible, [1] Rotation, [2] Moving, [3] Opacity, [4] Jumping, [5] Punching/Throwing, [6] Kicking, [7] Blocking, [8] Hit}                                                                             'See the DefineCollisionAreas method below.
 
   long deltax[2], x_prev[2], y_prev[2], LJoyX[2], LJoyY[2], collision[2], HealthBar[2], deltay[2] ' deltay deals only with jump speed
-  long heightOffGround[2] ' Lets us know when they're landing
+  long heightOffGround[2], pvpState ' Lets us know when they're landing
   long Momot, MomotRot, MomotMoving, MomotOpacity, MomotJumping, MomotPunching, PunchRight, MomotKicking, MomotBlocking
 
   long Garner, GarnerRot, GarnerMoving, GarnerOpacity, GarnerJumping, GarnerThrowing, GarnerBlocking, GGAtt, GGHAtt, GGBATT[4], GGHeATT[4]
@@ -100,7 +100,7 @@ var                                   'Declare global variables in this block, w
   'Create an empty array of 100 longs for each Cog
   'so that a Spin interpreter running on each has enough scratchpad RAM space
   'into which it can store temporary variables without accidentally overwriting other important data
-  long Stack0[290], Stack1[100], Stack2[100], Stack3[100], Stack4[100], Stack5[5], Stack6[5], Stack7[100]
+  long Stack0[100], Stack1[100], Stack2[100], Stack3[100], Stack4[100], Stack5[100], Stack6[100], Stack7[100]
 
 pub VideoGame() | i                   'This method runs on Cog 0 (which is what everything automatically starts running on by default)
   debug(`plot screen pos 100 0 size 768 640 backcolor black update) 'Create the main 768x640 pixel plot window for the game called "screen"
@@ -118,7 +118,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
   cogspin(2, GarnerMotion(),@Stack2)                       'Frame rate not good; run in main loop
   cogspin(3, EnemyMotion(),@Stack3)                'Start up Cog 1 and tell it to run the MarioMotion method in parallel to what's already running on Cog 0
   cogspin(4, PikminMotion(), @Stack4)
-  'cogspin(5, gravity(), @Stack5)                        'Just deals with the gravity calculations
+  cogspin(5, KonamiCode(), @Stack5)                        'Just deals with the gravity calculations
   cogspin(7,DebugDisplay(),@Stack7)               'Start up Cog 7 and tell it to run the DebugDisplay method in parallel to what's going on on all of the other cogs (Note: You are not required to have this feature in your final game i.e., if you need to use Cog 7 for something else)
   Momot:=100
   'DrawBackground()
@@ -257,33 +257,46 @@ pub getPlayerState(player) | p, pos[4], i
     if d[6].[4]==0
       PauseGame(p)
     }
+
     LJoyX[p]:=0#>(data[0+8*p]-LJoyXMin)*100/(LJoyXMax-LJoyXMin)<#100   'Scale the left joystick's analog X and Y ranges to be between 0-100
     LJoyY[p]:=0#>(data[2+8*p]-LJoyYMin)*100/(LJoyYMax-LJoyYMin)<#100   'Note that enclosing a computation or result between #> and <# in Spin2 limits the minimum and maximum value (in this case to beween 0 and 100)
-
-    case_fast LJoyX[p]
-       0..20  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-16 <#740
-      21..30  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-8 <#740
-      31..40  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-4 <#740
-      61..70  : playerPos[x+4*p]:=0#> playerPos[x+4*p]+4 <#740
-      71..80  : playerPos[x+4*p]:=0#> playerPos[x+4*p]+8 <#740
-      81..100 : playerPos[x+4*p]:=0#> playerPos[x+4*p]+16 <#740
-
-    case_fast LJoyY[p]
-      0..20  : playerz[p]:=64#> playerz[p]-16 <#312
-      21..30  : playerz[p]:=64#> playerz[p]-8 <#312
-      31..40  : playerz[p]:=64#> playerz[p]-4 <#312
-      61..70  : playerz[p]:=64#> playerz[p]+4 <#312
-      71..80  : playerz[p]:=64#> playerz[p]+8 <#312
-      81..100 : playerz[p]:=64#> playerz[p]+16 <#312
-
-
+    if playerState[5+9*p]==false and playerState[6+9*p]==false and playerState[7+9*p]==false and playerState[8+9*p]==false
+      {if player is not attacking, blocking, or being hit, allow them to move}
+      case_fast LJoyX[p]
+         0..20  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-16 <#740
+          'HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]-16 <#740
+        21..30  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-8 <#740
+          'HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]-8 <#740                            'Added a HitBox that moves whenever Momot moves'
+        31..40  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-4 <#740
+          'HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]-4 <#740
+        '41-60 is joystick deadband (X position doesn't change)
+        61..70  : playerPos[x+4*p]:=0#> playerPos[x+4*p]+4 <#740
+          'HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]+4 <#740
+        71..80  : playerPos[x+4*p]:=0#> playerPos[x+4*p]+8 <#740
+          'HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]+8 <#740
+        81..100 : playerPos[x+4*p]:=0#> playerPos[x+4*p]+16 <#740
+          'HitBoxes[x+4*p]:=0#> HitBoxes[x+4*p]+16 <#740
+      case_fast LJoyY[p]
+        0..20  : playerz[p]:=64#> playerz[p]-16 <#312
+          'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]-16 <#312
+        21..30  : playerz[p]:=64#> playerz[p]-8 <#312
+          'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]-8 <#312
+        31..40  : playerz[p]:=64#> playerz[p]-4 <#312
+          'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]-4 <#312
+        '41-60 is joystick deadband (Y position doesn't change)
+        61..70  : playerz[p]:=64#> playerz[p]+4 <#312
+          'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]+4 <#312
+        71..80  : playerz[p]:=64#> playerz[p]+8 <#312
+          'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]+8 <#312
+        81..100 : playerz[p]:=64#> playerz[p]+16 <#312
+          'HitBoxes[y+4*p]:=64#> HitBoxes[y+4*p]+16 <#312
     {Offset the }
     playerPos[y+4*p]:= heightOffGround[p] + playerz[p]
 
     {Set hurtbox to the corresponing playerPos}
+    repeat i from x+4*p to y+4*p
+      HitBoxes[i]:=playerPos[i]
 
-    HitBoxes[x+4*p]:= playerPos[x+4*p]+16
-    HitBoxes[y+4*p]:= playerPos[y+4*p]
     {Player State}
 
     {Player Moving}
@@ -406,7 +419,7 @@ pub MomotJump() | p
   deltay[p]:= 50 ' jump v_i
 
   repeat until deltay[p] <= -deltay[p] and heightOffGround[p] <= 0 'max fall speed: -deltay[p]
-    deltay[p] -= 25 'fall accel;
+    deltay[p] -= 10 'fall accel;
     case_fast deltay[p]
       -100..-1 : Momot:=MMRISE
       0 : Momot:=MMFLOAT
@@ -464,17 +477,7 @@ pub GarnerMotion() | p
       case_fast p
         0 : MomotJump()
         1 : GarnerJump()
-    {
-    if playerState[2]==false            'Check to see if Cog 0 has set the MomotMoving flag to be true or false
-      Garner:=0                 'Set MarioLegs to be the stationary leg sprite
-      repeat until playerState[2]==true    'Repeat just this line until Mario is moving
-      case Momot                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
-        100 : Momot:=101           ' If MarioLegs==101, then set MarioLegs:=102
-        101 : Momot:=102           ' If MarioLegs==102, then set MarioLegs:=103
-        102 : Momot:=103           ' If MarioLegs==103, then set MarioLegs:=105
-        103 : Momot:=100           ' If MarioLegs==105, then set MarioLegs:=101
-      waitms(50#> 600/deltax[p] <#333)    'Wait between 33ms - 333ms (speed scaled based on distance moved)
-      }
+
 
     if playerState[2+9*p]==false            'Check to see if Cog 0 has set the MomotMoving flag to be true or false
       {Idle State -- Make eye movement happer}
@@ -502,7 +505,7 @@ pub GarnerJump() | p
   Garner:= GGLAND
   waitms(1*FrameTime) 'Jumpsquat time
   repeat until deltay[p] <= -deltay[p] and heightOffGround[p] <= 0 'max fall speed: -deltay[p]
-    deltay[p] -= 25 'fall accel;
+    deltay[p] -= 10 'fall accel;
     case_fast deltay[p]
       -100..-1 :
         case Garner
@@ -517,17 +520,6 @@ pub GarnerJump() | p
   waitms(2*FrameTime) 'landing lag time
   Garner:= GGIC
   playerState[4+9*p]:=false     'Once both conditions met, player has landed
-  {
-  case Garner                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
-      GGIC : Garner:=GGCROUCH           ' If MarioLegs==101, then set MarioLegs:=102
-      GGCROUCH : Garner:=GGJUMP
-        GarnerPos[y]:=GarnerPos[y]+80                                     ' If MarioLegs==102, then set MarioLegs:=103
-      GGJUMP : Garner:=GGFALL
-        GarnerPos[y]:=GarnerPos[y]-80
-      GGFALL : Garner:=GGLAND
-      GGLAND : Garner:=GGIC
-        playerState[13]:=false
-  }
 
 pub GarnerBaseAttack()
   case Garner
@@ -692,30 +684,30 @@ pub DrawBackground() | i,j
   debug(`screen set (upper-left_X_coordinate, upper-left_Y_coordinate) sprite (SpriteNumber, Rotation, ScalingFactor, SpriteOpacity))
 
 pub SpawnActors()
-    {Player Initial States}
-    Momot := 100
+    Momot := 100                                  'Starting sprite number for Momot's bottom half image
     MomotOpacity:=255
-    Garner := 0
+    Garner := 0                                 'Starting sprite number for Momot's bottom half image
     GarnerOpacity:=255
     playerPos[x]:=MOMOT_INIT[x]
     playerPos[y]:=MOMOT_INIT[y]
     playerPos[width]:=MOMOT_INIT[width]                   '
     playerPos[height]:=MOMOT_INIT[height]
+
     playerPos[x+4]:=GARNER_INIT[x]
     playerPos[y+4]:=GARNER_INIT[y]
     playerPos[width+4]:=GARNER_INIT[width]
     playerPos[height+4]:=GARNER_INIT[height]
+
     heightOffGround[0]:=0
     heightOffGround[1]:=0
+
     HealthBar[0]:=144
     HealthBar[1]:=144
-
-    {Enemy Initial States}
     BulletHealth:=255
     BulletRot:=1
     Pikmin[0]:=750
     Pikmin[1]:=125
-    PikminHealth[0]:=255
+    PikminHealth[0]:=255                               'Start with Mario fully opaque (the 4th parameter in a debug sprite command adjusts transparency between 255 (default) and 0, which is fully transparent/invisible
     PunchRight := true
     GGAtt:=25
     GGHAtt:= 27
@@ -869,12 +861,31 @@ pub PikminMotion() | PikminPosX, PikminPosY
             waitms(175)
         PikminPosY := Pikmin[1]
 
+pub KonamiCodeEasterEgg(p)
+repeat
+  repeat until data[7+8*p].[0] == 0
+    waitms(FrameTime)
+  repeat until data[6+8*p].[6] == 0
+    waitms(FrameTime)
+  repeat until data[7+8*p].[0] == 0
+    waitms(FrameTime)
+  repeat until data[6+8*p].[6] == 0
+    waitms(FrameTime)
 
-pub EnemyBehavior(level)  | Enemy Index
+  repeat until data[7+8*p].[1] == 0
+    waitms(FrameTime)
+  repeat until data[6+8*p].[7] == 0
+    waitms(FrameTime)
+  repeat until data[7+8*p].[1] == 0
+    waitms(FrameTime)
+  repeat until data[6+8*p].[7] == 0
+    waitms(FrameTime)
 
-case_fast level
-  1:
-    repeat until KillCounter > 10
-      repeat until ActiveEnemies > 3
-        EnemyIndex := getrnd()+//3
-        debug(`screen set `(EnemyPosX[EnemyIndex]), `(EnemyPosY[EnemyIndex])) sprite (Enemies[EnemyIndex], `(BulletRot), 4, `(BulletHealth))
+  repeat until data[7+8*p].[6] == 0
+    waitms(FrameTime)
+  repeat until data[6+8*p].[4] == 0
+    waitms(FrameTime)
+  {Konami Code Activated}
+  case pvpState
+    true : pvpState:=false
+    false : pvpState:=true
