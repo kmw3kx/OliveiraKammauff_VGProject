@@ -95,6 +95,8 @@ var                                   'Declare global variables in this block, w
 
   long Garner, GarnerRot, GarnerMoving, GarnerOpacity, GarnerJumping, GarnerThrowing, GarnerBlocking, GGAtt, GGHAtt, GGBATT[4], GGHeATT[4]
 
+  long EnemyPos[6], EnemyHealth[3], Enemies[3], KillCounter, ActiveEnemies
+
   long BulletHealth, BulletRot, HealthBoostGranted, PikminHealth[3], Pikmin[6]                                   '
   long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay, Frame                               'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
   'Create an empty array of 100 longs for each Cog
@@ -161,7 +163,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     if(BulletHealth > 16)
       if CheckCollision(@HitBoxes,@BulletB)
         if playerState[7] == false
-          HealthBar[0]:=(HealthBar[0] - 2)
+          HealthBar[0]:=(HealthBar[0] - 1)
       if CheckCollision(@HitBoxes[4],@BulletB)
         if playerState[16] == false
            HealthBar[1]:=(HealthBar[1] - 2)
@@ -169,10 +171,10 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     if(PikminHealth[0] > 16)
       if CheckCollision(@HitBoxes,@Pikmin)
         if playerState[7] == false
-          HealthBar[0]:=(HealthBar[0] - 5)
+          HealthBar[0]:=(HealthBar[0] - 2)
       if CheckCollision(@HitBoxes[4],@Pikmin)
         if playerState[16] == false
-           HealthBar[1]:=(HealthBar[1] - 5)
+           HealthBar[1]:=(HealthBar[1] - 4)
 
     if(PikminHealth[0] > 16)
       if CheckCollision(@playerPos,@Pikmin)
@@ -236,8 +238,8 @@ pub DebugDisplay()                                  'Use to display variables on
 
       debug(`term1 'MomotJump: deltay:`(deltay[0]); height: `(heightOffGround)',10
       )
-      debug(`term1 'LoopTime = `(LoopTime)' 'µs',10)
-      debug(`term1 'Frame Wait Time = `(FrameWaitTime)' 'µs',10)
+      debug(`term1 'LoopTime = `(LoopTime)' 'ï¿½s',10)
+      debug(`term1 'Frame Wait Time = `(FrameWaitTime)' 'ï¿½s',10)
 
       DisplayDelay:=DisplayDelay+clkfreq/5          'Add another 0.2 second worth of system clock pulses to DisplayDelay time (for the next delay)
 
@@ -568,7 +570,7 @@ pub DefineCollisionAreas() | i
   playerz[1]:=GARNER_INIT[y]
 
   BulletB[0]:=700                     'Starting Goomba x position (far right of screen)
-  BulletB[1]:=198                      'Starting Goomba y position
+  BulletB[1]:=50 + getrnd()+//200                      'Starting Goomba y position
   BulletB[2]:=64                      'Width of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
   BulletB[3]:=64                  'Height of Mario's character (64 since we're displaying two 16x16 sprite images at 2x scale)                     'Height of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
 
@@ -648,8 +650,8 @@ pub PauseGame(player)                                   'If player presses the S
 
 pub DrawGame()                  'Responsible for rendering the sprites to the debug screen so that the game is visible
     DrawBackground()
-
     DrawActors()
+    DrawLevel(1)
 
 pub DrawBackground() | i,j
 
@@ -703,11 +705,13 @@ pub SpawnActors()
 
     HealthBar[0]:=144
     HealthBar[1]:=144
+    KillCounter:=0
+    {Enemy Initial States}
     BulletHealth:=255
     BulletRot:=1
     Pikmin[0]:=750
-    Pikmin[1]:=125
-    PikminHealth[0]:=255                               'Start with Mario fully opaque (the 4th parameter in a debug sprite command adjusts transparency between 255 (default) and 0, which is fully transparent/invisible
+    Pikmin[1]:=50 + getrnd()+//200
+    PikminHealth[0]:=255
     PunchRight := true
     GGAtt:=25
     GGHAtt:= 27
@@ -733,6 +737,28 @@ pub DrawActors()                'Draw all of the Characters on screen that chang
       if (HealthBoostGranted == false)
         debug(`screen set 500, 250) sprite (133, 0, 3, 255))
 
+
+
+pub DrawLevel(level)
+  case_fast level
+    1 :
+      if (BulletHealth > 16)
+        debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          BulletHealth:= 255
+          BulletB[0]:=700
+          BulletB[1]:= 50 + getrnd()+//200
+      if (PikminHealth[0] > 16)
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1])) sprite (29, 0, 3, `(PikminHealth[0]))
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1]-48)) sprite (31, 0, 3, `(PikminHealth[0]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          PikminHealth[0] := 255
+          Pikmin[0]:=750
+          Pikmin[1]:=50 + getrnd()+//200
 
 pub ShowInstructions() | i
   debug(`term Instructions pos 140 100 size 75 24 textsize 12 color black white backcolor white)  'Create a new debug terminal window called called "Instructions" at x=140 y=100 on the PC screen (overlaid on plot window)                                                                                            ' that is 75 spaces wide by 10 lines deep with text color=black on white with white background and font size 12
