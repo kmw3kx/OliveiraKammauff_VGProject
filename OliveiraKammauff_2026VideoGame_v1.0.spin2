@@ -17,7 +17,8 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
         'and the #n sets the incrementer at n
   {Momot (MM) Sprites}
   MM_I '[100]; Idle
-  MMSTEP[3] ' [101-103]; combine w/ MM_I for walk cycle
+  MMSTEP0,MMSTEP1,MMSTEP2  ' [101-103]; combine w/ MM_I for walk cycle
+
   MMSPLAY ' [104]; his legs are splayed
   MMCROUCH ' [105]; One knee down
   MMRISE ' [106]; he is ascending, men of galilee
@@ -29,15 +30,15 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
   #0
   GGIC, GGIU, GGIUR, GGIR ' [0-3];Idle + eye movement (Center, up, up-right, right)
   GGTALK ' [4]Switch w/ GGIC
-  GGWALK[3] ' [5-7]Walk Cycle
+  GGWALK0, GGWALK1, GGWALK2 ' [5-7]Walk Cycle
   GGJUMP ' [8] Legs split
   GGINSTRUCT ' [9] He's leading w/ his left & his mouth is open
-  GGKIDS[4] ' [10-13] Looks like he's waving his arms shouting "lousy kids."
+  GGKIDS0, GGKIDS1, GGKIDS2, GGKIDS3 ' [10-13] Looks like he's waving his arms shouting "lousy kids."
   ' Could also be a hurt animation.
   GGFLY, GGFLYSTRUCT '[14-15] Flying, Attacking (i.e. like instruct)
   GGLAND, GGFALL, GGCROUCH ' [16-18] self-explanatory
-  GGCLIMB[2] ' [19-20] Think Mario on vine; facing away from the screen
-  PROPLR[4] ' [21-24] The hat
+  GGCLIMB[2] ' [19-20] Think Mario on vine; facing away from the screen  Need to update
+  PROPLR[4] ' [21-24] The hat         Need to update
 
      {
     case_fast player
@@ -383,23 +384,29 @@ pub getPlayerState(player) | p, pos[4], i
         GGHeATT[y]:=playerPos[y+4*p]-48
 
 pub MomotMotion() | p
+{Handle the physics, behavior, and sprite logic for Momot}
+p:=0
   repeat
-    p:=0
-    if playerState[4+9*p]
+
+    if playerState[4+9*p] ' Jumping
       case_fast p
         0 : MomotJump()
         1 : GarnerJump()
 
-    if playerState[2]==false            'Check to see if Cog 0 has set the MomotMoving flag to be true or false
-      Momot:=100                 'Set MarioLegs to be the stationary leg sprite
-      repeat until playerState[2]==true    'Repeat just this line until Mario is moving
-        case Momot                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
-          100 : Momot:=101           ' If MarioLegs==101, then set MarioLegs:=102
-          101 : Momot:=102           ' If MarioLegs==102, then set MarioLegs:=103
-          102 : Momot:=103           ' If MarioLegs==103, then set MarioLegs:=105
-          103 : Momot:=100           ' If MarioLegs==105, then set MarioLegs:=101
-      waitms(FrameTime#> 6*FrameTime/deltax[p] <#4*FrameTime)    'Wait between 33ms - 333ms (speed scaled based on distance moved)
+    if playerState[2+9*p]==false
+      {Idle State}
+      Momot:= MM_I
+      repeat until playerState[2+9*p]==true 'Repeat until moving
+        waitms(FrameTime)
 
+    if playerState[2+9*p]==true
+    {Moving animation}
+        case Momot
+          MM_I : Momot:= MMSTEP0
+          MMSTEP0 : Momot:= MMSTEP1
+          MMSTEP1 : Momot:= MMSTEP2
+          MMSTEP2 : Momot:= MM_I
+        waitms(FrameTime#> 6*FrameTime/deltax[p] <#4*FrameTime)
 
 pub MomotJump() | p
 'deals with the Momot Jumping animation and speed
@@ -422,18 +429,6 @@ pub MomotJump() | p
   Momot:=MM_I
   playerState[4+9*p]:=false     'Once both conditions met, momot has landed
 
-
-   {
-                                                      'Set MarioLegs to be the stationary leg sprite
-  case Momot                   'In Spin2, a "case" statement is a fancy way of performing multiple "if statements" (See Spin2 Documentation file)
-      100 : Momot:=105           ' If MarioLegs==101, then set MarioLegs:=102
-      105 : Momot:=106
-        MomotPos[y]:=MomotPos[y]+80                                     ' If MarioLegs==102, then set MarioLegs:=103
-      106 : Momot:=107
-        MomotPos[y]:=MomotPos[y]-80
-      107 : Momot:=100
-        playerState[4]:=false
-    }
 pub MomotPunch()
   if PunchRight == true
     case Momot
@@ -473,9 +468,9 @@ pub MomotBlock()
     playerState[7] := false
 
 
-pub GarnerMotion() | p                    'Cycle through Mario's leg sprite images whenever he's moving to make it look like he's running
+pub GarnerMotion() | p
+  p:=1
    repeat
-    p:=1
     if playerState[4+9*p]
       case_fast p
         0 : MomotJump()
