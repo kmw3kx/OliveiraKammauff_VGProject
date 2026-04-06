@@ -7,7 +7,7 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
   #0, x, y, width, height             '#0 resets the automatic constant counter number to 0 (just in case it has been changed by preceding unspecified constants), so here x=0, y=1, width=2, height=3 which is convenient for collision definitions arrays e.g., Momot[x] is the same as Momot[0], Momot[y] is the same as Momot[1], etc. (and for most people, it's easier to remember that the x index holds the x position value rather than the 0th index holds the x value!-)
 
   FrameTime=100                        'Set your target frame duration/period in milliseconds (i.e., frame rate). This value should probably be between around 50-100ms, i.e. the screen should be cleared and completely redrawn every 50-100ms. If you set your frame rate/frequency too high (i.e., set this FrameTime/period value too low) and don't have at least around 15ms of pause time between each loop, then the USB interface through which the P2 talks to your computer may get clobberred and bogged down, which can result in strange behavior such as the controller data seeming to lag way behind, appearing to make characters move on their own or long after the controls were pressed.
-  CollisionDebugMode=false            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
+  CollisionDebugMode=true            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
 
 
   {PROPERTIES}
@@ -94,6 +94,8 @@ var                                   'Declare global variables in this block, w
 
   long Garner, GarnerRot, GarnerMoving, GarnerOpacity, GarnerJumping, GarnerThrowing, GarnerBlocking, GGAtt, GGHAtt, GGBATT[4], GGHeATT[4]
 
+  long EnemyPos[6], EnemyHealth[3], Enemies[3], KillCounter, ActiveEnemies
+
   long BulletHealth, BulletRot, HealthBoostGranted, PikminHealth[3], Pikmin[6]                                   '
   long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay, Frame                               'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
   'Create an empty array of 100 longs for each Cog
@@ -160,7 +162,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     if(BulletHealth > 16)
       if CheckCollision(@HitBoxes,@BulletB)
         if playerState[7] == false
-          HealthBar[0]:=(HealthBar[0] - 2)
+          HealthBar[0]:=(HealthBar[0] - 1)
       if CheckCollision(@HitBoxes[4],@BulletB)
         if playerState[16] == false
            HealthBar[1]:=(HealthBar[1] - 2)
@@ -168,10 +170,10 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     if(PikminHealth[0] > 16)
       if CheckCollision(@HitBoxes,@Pikmin)
         if playerState[7] == false
-          HealthBar[0]:=(HealthBar[0] - 5)
+          HealthBar[0]:=(HealthBar[0] - 2)
       if CheckCollision(@HitBoxes[4],@Pikmin)
         if playerState[16] == false
-           HealthBar[1]:=(HealthBar[1] - 5)
+           HealthBar[1]:=(HealthBar[1] - 4)
 
     if(PikminHealth[0] > 16)
       if CheckCollision(@playerPos,@Pikmin)
@@ -581,7 +583,7 @@ pub DefineCollisionAreas() | i
   playerz[1]:=GARNER_INIT[y]
 
   BulletB[0]:=700                     'Starting Goomba x position (far right of screen)
-  BulletB[1]:=198                      'Starting Goomba y position
+  BulletB[1]:=50 + getrnd()+//200                      'Starting Goomba y position
   BulletB[2]:=64                      'Width of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
   BulletB[3]:=64                  'Height of Mario's character (64 since we're displaying two 16x16 sprite images at 2x scale)                     'Height of Goomba's character (32 since we're displaying the 16x16 sprite image at 2x scale)
 
@@ -661,8 +663,8 @@ pub PauseGame(player)                                   'If player presses the S
 
 pub DrawGame()                  'Responsible for rendering the sprites to the debug screen so that the game is visible
     DrawBackground()
-
     DrawActors()
+    DrawLevel(1)
 
 pub DrawBackground() | i,j
 
@@ -714,12 +716,12 @@ pub SpawnActors()
     heightOffGround[1]:=0
     HealthBar[0]:=144
     HealthBar[1]:=144
-
+    KillCounter:=0
     {Enemy Initial States}
     BulletHealth:=255
     BulletRot:=1
     Pikmin[0]:=750
-    Pikmin[1]:=125
+    Pikmin[1]:=50 + getrnd()+//200
     PikminHealth[0]:=255
     PunchRight := true
     GGAtt:=25
@@ -746,6 +748,28 @@ pub DrawActors()                'Draw all of the Characters on screen that chang
       if (HealthBoostGranted == false)
         debug(`screen set 500, 250) sprite (133, 0, 3, 255))
 
+
+
+pub DrawLevel(level)
+  case_fast level
+    1 :
+      if (BulletHealth > 16)
+        debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          BulletHealth:= 255
+          BulletB[0]:=700
+          BulletB[1]:= 50 + getrnd()+//200
+      if (PikminHealth[0] > 16)
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1])) sprite (29, 0, 3, `(PikminHealth[0]))
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1]-48)) sprite (31, 0, 3, `(PikminHealth[0]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          PikminHealth[0] := 255
+          Pikmin[0]:=750
+          Pikmin[1]:=50 + getrnd()+//200
 
 pub ShowInstructions() | i
   debug(`term Instructions pos 140 100 size 75 24 textsize 12 color black white backcolor white)  'Create a new debug terminal window called called "Instructions" at x=140 y=100 on the PC screen (overlaid on plot window)                                                                                            ' that is 75 spaces wide by 10 lines deep with text color=black on white with white background and font size 12
@@ -875,11 +899,3 @@ pub PikminMotion() | PikminPosX, PikminPosY
         PikminPosY := Pikmin[1]
 
 
-pub EnemyBehavior(level)  | Enemy Index
-
-case_fast level
-  1:
-    repeat until KillCounter > 10
-      repeat until ActiveEnemies > 3
-        EnemyIndex := getrnd()+//3
-        debug(`screen set `(EnemyPosX[EnemyIndex]), `(EnemyPosY[EnemyIndex])) sprite (Enemies[EnemyIndex], `(BulletRot), 4, `(BulletHealth))
