@@ -97,7 +97,7 @@ var                                   'Declare global variables in this block, w
 
   long EnemyPos[6], EnemyHealth[3], Enemies[3], KillCounter, ActiveEnemies
 
-  long BulletHealth, BulletRot, HealthBoostGranted, PikminHealth[3], Pikmin[6]                                   '
+  long BulletHealth, BulletRot, HealthBoostGranted, PikminHealth[3], Pikmin[12]                                   '
   long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay, Frame                               'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
   'Create an empty array of 100 longs for each Cog
   'so that a Spin interpreter running on each has enough scratchpad RAM space
@@ -188,6 +188,29 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
       if CheckCollision(@GGHeATT, @Pikmin)
         if playerState[15]
           PikminHealth[0]:=(PikminHealth[0] - 50)
+
+
+
+    if(PikminHealth[1] > 16)
+      if CheckCollision(@HitBoxes,@Pikmin[4])
+        if playerState[7] == false
+          HealthBar[0]:=(HealthBar[0] - 2)
+      if CheckCollision(@HitBoxes[4],@Pikmin[4])
+        if playerState[16] == false
+           HealthBar[1]:=(HealthBar[1] - 4)
+
+    if(PikminHealth[1] > 16)
+      if CheckCollision(@playerPos,@Pikmin[4])
+        if playerState[5]
+          PikminHealth[1]:=(PikminHealth[1] - 25)
+        if playerState[6]
+          PikminHealth[1]:=(PikminHealth[1] - 40)
+      if CheckCollision(@GGBATT, @Pikmin[4])
+        if playerState[14]
+          PikminHealth[1]:=(PikminHealth[1] - 15)
+      if CheckCollision(@GGHeATT, @Pikmin[4])
+        if playerState[15]
+          PikminHealth[1]:=(PikminHealth[1] - 50)
 
 
     if(BulletHealth > 16)
@@ -598,6 +621,11 @@ pub DefineCollisionAreas() | i
   Pikmin[2]:=32
   Pikmin[3]:=90
 
+  Pikmin[4]:=750
+  Pikmin[5]:=125
+  Pikmin[6]:=32
+  Pikmin[7]:=90
+
   HitBoxes[x]:=playerPos[x]+16
   HitBoxes[y]:=playerPos[y]
   HitBoxes[width]:=64
@@ -711,6 +739,9 @@ pub SpawnActors()
     heightOffGround[1]:=0
     HealthBar[0]:=144
     HealthBar[1]:=144
+    PunchRight := true
+    GGAtt:=25
+    GGHAtt:= 27
     KillCounter:=0
     {Enemy Initial States}
     BulletHealth:=255
@@ -718,10 +749,11 @@ pub SpawnActors()
     Pikmin[0]:=750
     Pikmin[1]:=50 + getrnd()+//200
     PikminHealth[0]:=255
-    PunchRight := true
-    GGAtt:=25
-    GGHAtt:= 27
+    Pikmin[2]:=750
+    Pikmin[3]:=50 + getrnd()+//200
+    PikminHealth[1]:=255
     HealthBoostGranted := false
+
 pub DrawActors()                'Draw all of the Characters on screen that change (players, enemies, items, health status)
     {DRAWING SPRITES}
             'Sprites's: X position,  Y position   Sprite's: image #,  rotation, scaling, opacity
@@ -745,17 +777,18 @@ pub DrawActors()                'Draw all of the Characters on screen that chang
 
 
 
-pub DrawLevel(level)
+pub DrawLevel(level)    'Method that spawns enemies for each different level'
   case_fast level
-    1 :
-      if (BulletHealth > 16)
+    1 : {Level One}
+      if (BulletHealth > 16)                                                                               'Draw Enemy while their Health (opacity) is over 16'
         debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
       else
-        KillCounter:=KillCounter + 1
-        if KillCounter < 10
+        KillCounter:=KillCounter + 1  'Update Kill Counter'
+        if KillCounter < 10           'Respawn the Enemy while the Kill Counter is below a certain threshhold'
           BulletHealth:= 255
-          BulletB[0]:=700
+          BulletB[0]:=700              'Respawn by resetting enemy properties'
           BulletB[1]:= 50 + getrnd()+//200
+          BulletRot:=0
       if (PikminHealth[0] > 16)
         debug(`screen set `(Pikmin[0]), `(Pikmin[1])) sprite (29, 0, 3, `(PikminHealth[0]))
         debug(`screen set `(Pikmin[0]), `(Pikmin[1]-48)) sprite (31, 0, 3, `(PikminHealth[0]))
@@ -765,6 +798,18 @@ pub DrawLevel(level)
           PikminHealth[0] := 255
           Pikmin[0]:=750
           Pikmin[1]:=50 + getrnd()+//200
+      if (PikminHealth[1] > 16)
+        debug(`screen set `(Pikmin[4]), `(Pikmin[5])) sprite (33, 0, 3, `(PikminHealth[1]))
+        debug(`screen set `(Pikmin[4]), `(Pikmin[5]-48)) sprite (37, 0, 3, `(PikminHealth[1]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          PikminHealth[1] := 255
+          Pikmin[4]:=750
+          Pikmin[5]:=50 + getrnd()+//200
+
+
+
 
 pub ShowInstructions() | i
   debug(`term Instructions pos 140 100 size 75 24 textsize 12 color black white backcolor white)  'Create a new debug terminal window called called "Instructions" at x=140 y=100 on the PC screen (overlaid on plot window)                                                                                            ' that is 75 spaces wide by 10 lines deep with text color=black on white with white background and font size 12
@@ -892,5 +937,4 @@ pub PikminMotion() | PikminPosX, PikminPosY
             Pikmin[1]:=Pikmin[1]-16
             waitms(175)
         PikminPosY := Pikmin[1]
-
 
