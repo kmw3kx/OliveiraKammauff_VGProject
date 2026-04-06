@@ -114,4 +114,27 @@ I also think there needs to be some sort of time syncing, but i'm not certain ho
 
 Anyways, I guess that's a problem for another day...
 
+4/5/26 
+
+Ok, final push on this. Manuel has made really great progress on this, and now its time for me to bring some fresh idea.
+
+Let me start listing things that I want to change:
+
+- Pikmin Walk Cycle & Homing behavior
+- Better/floatier jumping behavior
+- playerMotion all being handled together
+- Limit the amount of controller inputs being written to only the ones being used
+    - Ok so it looks like it increments through them automatically, so there's not an easy way to stop that ram being used. I do think the movement animations could be dealt w/ in player motion, which would help the lag
+
+Ok, I've been working on the better jumping behavior. I'm running into an issue with updating the playerPos based on this, since now it's more of a physics-based jump system
+
+I think i need a playerz var now to deal with limiting the location. no getting around it.
+
+OK! It's working fairly well!
+
+![JumpingPhysicsImplementation](MarkdownMedia/JumpingPhysicsImplementation.gif)
+
+4/6/26 - Final Push!!!
+
+- Continuing work on sprite calcs and updating Garner as well
 
