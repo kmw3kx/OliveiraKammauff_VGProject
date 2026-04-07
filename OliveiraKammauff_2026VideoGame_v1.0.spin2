@@ -98,7 +98,7 @@ var                                   'Declare global variables in this block, w
   long EnemyPos[6], EnemyHealth[3], Enemies[3], KillCounter, ActiveEnemies
 
   long BulletHealth, BulletRot, HealthBoostGranted, PikminHealth[3], Pikmin[12]                                   '
-  long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay, Frame, CurrentLevel, PikminSizeBoost                              'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
+  long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay, Frame, CurrentLevel, PikminSizeBoost, KillCounterCheck                              'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
   'Create an empty array of 100 longs for each Cog
   'so that a Spin interpreter running on each has enough scratchpad RAM space
   'into which it can store temporary variables without accidentally overwriting other important data
@@ -174,10 +174,10 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     if(PikminHealth[0] > 16)
       if CheckCollision(@HitBoxes,@Pikmin)
         if playerState[7] == false
-          HealthBar[0]:=(HealthBar[0] - 2)
+          HealthBar[0]:=(HealthBar[0] - 3)
       if CheckCollision(@HitBoxes[4],@Pikmin)
         if playerState[16] == false
-           HealthBar[1]:=(HealthBar[1] - 4)
+           HealthBar[1]:=(HealthBar[1] - 6)
 
     if(PikminHealth[0] > 16)
       if CheckCollision(@playerPos,@Pikmin)
@@ -227,15 +227,15 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     if(PikminHealth[2] > 16)
       if CheckCollision(@playerPos,@Pikmin[8])
         if playerState[5]
-          PikminHealth[2]:=(PikminHealth[2] - 25)
+          PikminHealth[2]:=(PikminHealth[2] - 15)
         if playerState[6]
-          PikminHealth[2]:=(PikminHealth[2] - 40)
+          PikminHealth[2]:=(PikminHealth[2] - 30)
       if CheckCollision(@GGBATT, @Pikmin[8])
         if playerState[14]
-          PikminHealth[2]:=(PikminHealth[2] - 15)
+          PikminHealth[2]:=(PikminHealth[2] - 5)
       if CheckCollision(@GGHeATT, @Pikmin[8])
         if playerState[15]
-          PikminHealth[2]:=(PikminHealth[2] - 50)
+          PikminHealth[2]:=(PikminHealth[2] - 35)
 
     if(BulletHealth > 16)
       if CheckCollision(@playerPos,@BulletB)
@@ -251,16 +251,22 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
           BulletHealth:=(BulletHealth - 40)
 
 
-    if KillCounter > 13
-      if CurrentLevel <= 3
+    if KillCounter > KillCounterCheck
+      if CurrentLevel < 3
         CurrentLevel := CurrentLevel + 1
         SpawnEnemies()
         KillCounter:=0
+        case_fast CurrentLevel
+          2 : KillCounterCheck:=18
+          3 : KillCounterCheck:=30
         PikminSizeBoost:=1
+
+    if KillCounter > KillCounterCheck  and CurrentLevel == 3
+      YouWin()
 
 
     if HealthBar[0] < 0 and HealthBar[1] < 0
-      ShowInstructions()
+      YouLose()
 
 
     ''It is highly recommended that you include the following code in your game
@@ -781,6 +787,7 @@ pub SpawnActors()
     GGAtt:=25
     GGHAtt:= 27
     KillCounter:=0
+    KillCounterCheck:=13
 
 pub SpawnEnemies()
     {Enemy Initial States}
@@ -858,8 +865,8 @@ pub DrawLevel(level)    'Method that spawns enemies for each different level'
           Pikmin[8]:=750
           Pikmin[9]:=50 + getrnd()+//200
       if (PikminHealth[0] > 16)
-        debug(`screen set `(Pikmin[0]), `(Pikmin[1])) sprite (29, 0, `(3+3*PikminSizeBoost), `(PikminHealth[0]))
-        debug(`screen set `(Pikmin[0]), `(Pikmin[1]-48)) sprite (31, 0, `(3+3*PikminSizeBoost), `(PikminHealth[0]))
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1])) sprite (29, 0, 3, `(PikminHealth[0]))
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1]-48)) sprite (31, 0, 3, `(PikminHealth[0]))
       else
         KillCounter:=KillCounter + 1
         if KillCounter < 10
@@ -875,12 +882,50 @@ pub DrawLevel(level)    'Method that spawns enemies for each different level'
           PikminHealth[1] := 255
           Pikmin[4]:=750
           Pikmin[5]:=50 + getrnd()+//200
+    3 : {Level Three}
+      if (PikminHealth[2] > 16)
+        debug(`screen set `(Pikmin[8]), `(Pikmin[9])) sprite (35, 0, 3, `(PikminHealth[2]))
+        debug(`screen set `(Pikmin[8]), `(Pikmin[9]-48)) sprite (39, 0, 3, `(PikminHealth[2]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 15
+          PikminHealth[2]:= 255
+          Pikmin[8]:=750
+          Pikmin[9]:=50 + getrnd()+//200
+      if (PikminHealth[0] > 16)
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1])) sprite (29, 0, 3, `(PikminHealth[0]))
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1]-48)) sprite (31, 0, 3, `(PikminHealth[0]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          PikminHealth[0] := 255
+          Pikmin[0]:=750
+          Pikmin[1]:=50 + getrnd()+//200
+      if (PikminHealth[1] > 16)
+        debug(`screen set `(Pikmin[4]), `(Pikmin[5])) sprite (33, 0, 3, `(PikminHealth[1]))
+        debug(`screen set `(Pikmin[4]), `(Pikmin[5]-48)) sprite (37, 0, 3, `(PikminHealth[1]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          PikminHealth[1] := 255
+          Pikmin[4]:=750
+          Pikmin[5]:=50 + getrnd()+//200
+      if (BulletHealth > 16)
+        debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          BulletHealth:= 255
+          BulletB[0]:=700
+          BulletB[1]:= 50 + getrnd()+//200
+          BulletRot:= 1
+
 
 pub ShowInstructions() | i
   debug(`term Instructions pos 140 100 size 75 24 textsize 12 color black white backcolor white)  'Create a new debug terminal window called called "Instructions" at x=140 y=100 on the PC screen (overlaid on plot window)                                                                                            ' that is 75 spaces wide by 10 lines deep with text color=black on white with white background and font size 12
                                                                                                   ' that is 75 text spaces wide by 24 lines deep with text color=black on white with white background and font size 12
   repeat i from 0 to 1                           'This is a demo of how to point to different string addresses in a "for" loop
-    PrintStr(@@StringAddress[i])                 'Print string who's starting address is at the specified memory location (Note: You must use two @ symbols to pass the address of a string like this!)
+    PrintStr(@@StringAddress[i],Instructions)                 'Print string who's starting address is at the specified memory location (Note: You must use two @ symbols to pass the address of a string like this!)
   debug(`Instructions 2 15 3 10)                 'Set cursor's column to 30 and row to be 10 (2=set column command, 3=set row command -> see Text Terminal section of Spin2 Programming documnent)
   PrintStr(@string2)                             'Print string who's starting address is at the memory location named string2
   repeat until data[6].[2]==0                    'Wait until Start button is pressed on the Wii controller
@@ -892,13 +937,13 @@ pub ShowInstructions() | i
   waitms(750)
   debug(`Instructions close)                     'Close this debug text terminal window
 
-pub PrintStr(strAddress)                         'Print a string of characters that starts at a specified memory address (with no new line afterward)
+pub PrintStr(strAddress,debugWindow)                        'Print a string of characters that starts at a specified memory address (with no new line afterward)
   repeat (strsize(strAddress))                   'Repeat once for each character in the string (strsize returns the total length of the string up to its terminating 0
     if byte[strAddress]==13                      'Check to see if the current character is code=13, which indicates a line feed and carriage return
-      debug(`Instructions 13)                    'Create a new line and carriage return (i.e., return cursor to the far left)             `
+      debug(`debugWindow 13)                    'Create a new line and carriage return (i.e., return cursor to the far left)             `
       strAddress++                               'Increment the string address index pointer by 1 to move on to the next character in the string
     else
-      debug(`Instructions `(byte[strAddress++])) 'Print the last character and increment the address pointer
+      debug(`debugWindow `(byte[strAddress++])) 'Print the last character and increment the address pointer
 
 dat
 string0       byte "Mario Demo Game Instructions:", 13, 13, 0    'Define a zero-terminated string of characters/bytes starting at memory address "string0" Use character=13 to add new lines (2 in this case)
@@ -907,7 +952,14 @@ string1       byte {                                             'Here's an exam
 }"Hint: What happens if you press both the A and ZR buttons at the same time while Mario is standing on top of the topmost question mark? ;-)",0
 string2       byte "---> Press the Start Button to play...",0
 string3       byte "HAVE FUN!!!",0
-StringAddress long @string0, @string1, @string2, @string3        'Make a list/array that holds the addresses of these strings to make it easy to display them in a "for" loop or other scheme
+
+string4       byte "Congratulations!! You saved the Mech Building from the Pikmin invasion!"
+
+string5       byte "Game Over! The Pikmin took over the Mech Building and Destroyed all the Propeller 2 Chips"
+
+string6       byte "Press Start to Restart the Game"
+
+StringAddress long @string0, @string1, @string2, @string3, @string4, @string5, @string6        'Make a list/array that holds the addresses of these strings to make it easy to display them in a "for" loop or other scheme
 
 {GAME STORAGE}
   {Spawn Locations}
@@ -1008,14 +1060,14 @@ pub PikminMotion() | RPikminPosX, RPikminPosY, YPikminPosX, YPikminPosY, BPikmin
       if PikminHealth[1] > 16
         if Pikmin[4] > 16
           repeat i from 0 to 4
-            Pikmin[4]:=Pikmin[4]-24
+            Pikmin[4]:=Pikmin[4]-32
             waitms(175)
         else
           Pikmin[4]:= 750
         YPikminPosX := Pikmin[0]
         if Pikmin[5] < 250
           repeat i from 0 to 4
-            Pikmin[5]:=Pikmin[5]+24
+            Pikmin[5]:=Pikmin[5]+32
             waitms(175)
         else
           repeat i from 0 to 4
@@ -1039,3 +1091,31 @@ pub PikminMotion() | RPikminPosX, RPikminPosY, YPikminPosX, YPikminPosY, BPikmin
             Pikmin[9]:=Pikmin[9]-16
             waitms(175)
         BPikminPosY := Pikmin[9]
+
+
+pub YouWin()
+  debug(`term YouWin pos 140 100 size 75 24 textsize 12 color black white backcolor white)  'Create a new debug terminal window called called "Instructions" at x=140 y=100 on the PC screen (overlaid on plot window)                                                                                            ' that is 75 spaces wide by 10 lines deep with text color=black on white with white background and font size 12
+                                                                                                  ' that is 75 text spaces wide by 24 lines deep with text color=black on white with white background and font size 12
+                            'This is a demo of how to point to different string addresses in a "for" loop
+  PrintStr(@@StringAddress[4],YouWin)                 'Print string who's starting address is at the specified memory location (Note: You must use two @ symbols to pass the address of a string like this!)
+  debug(`YouWin 2 15 3 10)                 'Set cursor's column to 30 and row to be 10 (2=set column command, 3=set row command -> see Text Terminal section of Spin2 Programming documnent)                            'Print string who's starting address is at the memory location named string2
+  repeat until data[6].[2]==0                    'Wait until Start button is pressed on the Wii controller
+    ReadController(1)                             'Update data bytes from the Wii Controller
+    waitms(100)                                  'No need to do this too quickly as we're dealing with human-scale speeds and don't want to clober the I2C interface or waste electricity
+  debug(`YouWin clear)                     'Clear entire terminal window and reset cursor to home (upper left)
+                   'Set cursor's column to 33 and row to be 5                             'Print string who's starting address is at the memory location named string3
+  waitms(750)
+
+
+pub YouLose()
+  debug(`term YouLose pos 140 100 size 75 24 textsize 12 color black white backcolor white)  'Create a new debug terminal window called called "Instructions" at x=140 y=100 on the PC screen (overlaid on plot window)                                                                                            ' that is 75 spaces wide by 10 lines deep with text color=black on white with white background and font size 12
+                                                                                                  ' that is 75 text spaces wide by 24 lines deep with text color=black on white with white background and font size 12
+                            'This is a demo of how to point to different string addresses in a "for" loop
+  PrintStr(@@StringAddress[5],YouLose)                 'Print string who's starting address is at the specified memory location (Note: You must use two @ symbols to pass the address of a string like this!)
+  debug(`YouWin 2 15 3 10)                 'Set cursor's column to 30 and row to be 10 (2=set column command, 3=set row command -> see Text Terminal section of Spin2 Programming documnent)                            'Print string who's starting address is at the memory location named string2
+  repeat until data[6].[2]==0                    'Wait until Start button is pressed on the Wii controller
+    ReadController(1)                             'Update data bytes from the Wii Controller
+    waitms(100)                             'No need to do this too quickly as we're dealing with human-scale speeds and don't want to clober the I2C interface or waste electricity
+  debug(`YouWin clear)                     'Clear entire terminal window and reset cursor to home (upper left)
+                   'Set cursor's column to 33 and row to be 5                             'Print string who's starting address is at the memory location named string3
+  waitms(750)
