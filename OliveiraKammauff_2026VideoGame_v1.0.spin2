@@ -94,6 +94,8 @@ var                                   'Declare global variables in this block, w
   long heightOffGround[2], pvpState ' Lets us know when they're landing
   long Momot, MomotRot, MomotMoving, MomotOpacity, MomotJumping, MomotPunching, PunchRight, MomotKicking, MomotBlocking
 
+  long punchDmg, kickDmg, electDmg
+
   long Garner, GarnerRot, GarnerMoving, GarnerOpacity, GarnerJumping, GarnerThrowing, GarnerBlocking, GGAtt, GGHAtt, GGBATT[4], GGHeATT[4]
 
   long BulletHealth, BulletRot, HealthBoostGranted, PikminHealth[3], Pikmin[6]                                   '
@@ -120,7 +122,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
 
   playerState[0]:=true
 
-  playerState[8]:=true
+  playerState[6]:=true
   cogspin(1, MomotMotion(),@Stack1)
   cogspin(2, GarnerMotion(),@Stack2)                       'Frame rate not good; run in main loop
   cogspin(3, EnemyMotion(),@Stack3)                'Start up Cog 1 and tell it to run the MarioMotion method in parallel to what's already running on Cog 0
@@ -189,10 +191,10 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
 
     if(PikminHealth[0] > 16)
       if CheckCollision(@playerPos,@Pikmin)
-        if playerState[5]
-          PikminHealth[0]:=(PikminHealth[0] - 25)
-        if playerState[6]
-          PikminHealth[0]:=(PikminHealth[0] - 40)
+        if playerState[5] 'Punch
+          PikminHealth[0]:=(PikminHealth[0] - punchDmg)
+        if playerState[6] 'Kick
+          PikminHealth[0]:=(PikminHealth[0] - kickDmg)
 
       if CheckCollision(@GGBATT, @Pikmin)
         if playerState[14]
@@ -259,6 +261,7 @@ pub DebugDisplay() | i                                  'Use to display variable
       DisplayDelay:=DisplayDelay+clkfreq/5          'Add another 0.2 second worth of system clock pulses to DisplayDelay time (for the next delay)
 
 pub getPlayerState(player) | p, pos[4], i
+  {Update the player characters based on the controller inputs}
 
     p:= player - 1
 
@@ -341,36 +344,37 @@ pub getPlayerState(player) | p, pos[4], i
     if (data[7+8*p].[5] == 0) and (playerState[5+9*p] == false)       'playerState[5] is the attack state
       playerState[5+9*p] := true
 
-
+    { Move to motion
     if playerState[5+9*p]
       case_fast p
         0 : MomotPunch()
         1 : GarnerBaseAttack()
       waitms(50#> 600/deltax[p] <#333)
+    }
 
     {Player Heavy Attack}
 
-    if (data[7+8*p].[3] == 0) and (playerState[6+9*p] == false)       'playerState[6] is the heavy attack state
+    if (data[7+8*p].[3] == 0) 'and (playerState[6+9*p] == false)       'playerState[6] is the heavy attack state
       playerState[6+9*p] := true
 
 
-
+    {
     if playerState[6+9*p]
       case_fast p
         0 : MomotKick()
         1 : GarnerHeavyAttack()
       waitms(50#> 600/deltax[p] <#333)
-
+     }
     {Player Block}
 
-    if (data[7+8*p].[4] == 0) and (playerState[7+9*p] == false)       'playerState[6] is the heavy attack state
+    if (data[7+8*p].[4] == 0)       'playerState[7] is the block state
       playerState[7+9*p] := true
-
+    {
     if playerState[7+9*p]
       case_fast p
         0 : MomotBlock()
         1 : GarnerBlock()
-
+    }
    {Garner Attack Hitboxes}
     if p == 1
      case_fast playerState[10]
@@ -390,6 +394,7 @@ pub MomotMotion() | p, i
 p:=0
 i:=0
   repeat
+    {Momot Hitstun}
     if playerState[8+9*p]==true ' Momot hit
       'hitstun
       playerState[0+9*p]:= false 'Make momot intangible
@@ -402,7 +407,7 @@ i:=0
       MomotOpacity:= 255
       Momot:= MM_I
       playerState[8+9*p]:= false
-
+    {Momot I-frames}
     if playerState[0+9*p]== false
       'Blink player while intangible and count blinks
        case_fast MomotOpacity
@@ -415,6 +420,25 @@ i:=0
         i:=0
         playerState[0+9*p]:= true
 
+    {Momot Attacking}
+    if playerState[5+9*p]
+      case_fast p
+        0 : MomotPunch()
+        1 : GarnerBaseAttack()
+
+
+    if playerState[6+9*p]==true
+      case_fast p
+        0 : MomotKick()
+        1 : GarnerHeavyAttack()
+
+    {Momot Blocking}
+    if playerState[7+9*p]
+      case_fast p
+        0 : MomotBlock()
+        1 : GarnerBlock()
+
+    {Momot Jumping}
     if playerState[4+9*p] ' Jumping
       case_fast p
         0 : MomotJump()
@@ -456,13 +480,18 @@ pub MomotJump() | p
   playerState[4+9*p]:=false     'Once both conditions met, momot has landed
 
 pub MomotPunch()
+repeat 5
+  punchDmg:=0
   if PunchRight == true
     case Momot
       100 : Momot:= 111
       111 : Momot:= 112
       112 : Momot:= 113
+        punchDmg:=5
       113 : Momot:= 114
+        punchDmg:=15
       114 : Momot:= 100
+        punchDmg:=5
         PunchRight:= false
         playerState[5]:= false
   else
@@ -470,28 +499,44 @@ pub MomotPunch()
       100 : Momot:= 116
       116 : Momot:= 117
       117 : Momot:= 118
+        punchDmg:=25
       118 : Momot:= 119
+        punchDmg:=5
       119 : Momot:= 100
         PunchRight:= true
         playerState[5] := false
+  waitms(FrameTime)
 
-pub MomotKick()
+pub MomotKick() | p
+p:= 0
+
+repeat 6
+  kickDmg:=0
   case Momot
-      100 : Momot:= 122
-      122 : Momot:= 123
-      123 : Momot:= 124
-      124 : Momot:= 125
-      125 : Momot:= 126
-      126 : Momot:= 100
-        playerState[6]:= false
+    100 : Momot:= 122
+      waitms(FrameTime)
+    122 : Momot:= 123
+      'if playerState[8+9*p]==true
+        'Momot:=125
+    123 : Momot:= 124
+      kickDmg:= 50
+    124 : Momot:= 125
+      kickDmg:= 30
+    125 : Momot:= 126
+      kickDmg:=10
+      waitms(FrameTime)
+    126 : Momot:= 100
+      playerState[6+9*p]:= false
+  waitms(FrameTime)
+
 
 pub MomotBlock()
-  if (data[7].[4] == 0)      'AI Helped rewrite this method when implementing two playable characters'
+  repeat until data[7].[4] == 1      'AI Helped rewrite this method when implementing two playable characters'
     Momot := 115
     playerState[7] := true
-  else
-    Momot := 100
-    playerState[7] := false
+
+Momot := 100
+playerState[7] := false
 
 
 pub GarnerMotion() | p
