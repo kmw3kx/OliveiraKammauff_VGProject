@@ -218,9 +218,9 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     if(PikminHealth[1] > 16)
       if CheckCollision(@playerPos,@Pikmin[4])
         if playerState[5]
-          PikminHealth[1]:=(PikminHealth[1] - 25)
+          PikminHealth[1]:=(PikminHealth[1] - punchDmg)
         if playerState[6]
-          PikminHealth[1]:=(PikminHealth[1] - 40)
+          PikminHealth[1]:=(PikminHealth[1] - kickDmg)
       if CheckCollision(@GGBATT, @Pikmin[4])
         if playerState[14]
           PikminHealth[1]:=(PikminHealth[1] - 15)
@@ -232,9 +232,9 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
     if(BulletHealth > 16)
       if CheckCollision(@playerPos,@BulletB)
         if playerState[5]
-          BulletHealth:=(BulletHealth - 15)
+          BulletHealth:=(BulletHealth - punchDmg)
         if playerState[6]
-          BulletHealth:=(BulletHealth - 30)
+          BulletHealth:=(BulletHealth - kickDmg)
       if CheckCollision(@GGBATT, @BulletB)
         if playerState[14]
           BulletHealth:=(BulletHealth - 10)
