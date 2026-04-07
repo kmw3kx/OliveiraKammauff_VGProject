@@ -37,8 +37,6 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
   ' Could also be a hurt animation.
   GGFLY, GGFLYSTRUCT '[14-15] Flying, Attacking (i.e. like instruct)
   GGLAND, GGFALL, GGCROUCH ' [16-18] self-explanatory
-  GGCLIMB[2] ' [19-20] Think Mario on vine; facing away from the screen  Need to update
-  PROPLR[4] ' [21-24] The hat         Need to update
 
      {
     case_fast player
@@ -252,8 +250,23 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
       if CheckCollision(@GGHeATT, @BulletB)
         if playerState[15]
           BulletHealth:=(BulletHealth - 40)
+
+
+
+    {EASTER EGG-allow for pvp}
     if pvpState
-      if(BulletHealth > 16)
+      if CheckCollision(@HitBoxes,@GGBATT)
+        if playerState[7] == false and playerState[5+9] == true 'GG basic attack
+          HealthBar[0]:=(HealthBar[0] - 1)
+      if CheckCollision(@HitBoxes[4],@playerPos)
+        if playerState[16] == false and playerState[5] == true 'MM punch
+           HealthBar[1]:=(HealthBar[1] - 15)
+      if CheckCollision(@HitBoxes,@GGHeATT)
+        if playerState[7] == false and playerState[6+9] == true 'GG heavy
+          HealthBar[0]:=(HealthBar[0] - 2)
+      if CheckCollision(@HitBoxes[4],@playerPos)
+        if playerState[16] == false and playerState[6] == true 'MM heavy
+           HealthBar[1]:=(HealthBar[1] - 30)
 
 
 
@@ -753,6 +766,7 @@ pub DrawBackground() | i,j
       debug(`screen set (`(i), 704) sprite (201, 0, 2))
 
   debug(`screen set 88 600 blue text 18 'Momot')
+
   debug(`screen set 88 552 blue text 18 'Garner')
 
   debug(`screen set 400 400 red text 48 'Level `(CurrentLevel)')
@@ -763,9 +777,12 @@ pub DrawBackground() | i,j
   else
     debug(`screen set 88 576 red text 18 'You Died...')
                                                                                              'These two if statements display the healthbars of the two players which are replaced by the message,
-  if HealthBar[1] > 0                                                                           '"You died..." when the players run out of health
+  if HealthBar[1] > 0                                                                         '"You died..." when the players run out of health
     debug(`screen set 88 528 color $DB1818 box 144 24)
-    debug(`screen set `(16+(HealthBar[1] / 2)) 528 color $1BDB18 box `(HealthBar[1]) 24)
+    if pvpState == true
+      debug(`screen set `(16+(HealthBar[1] / 2)) 528 color $1818DB box `(HealthBar[1]) 24)
+    else                                                                           '"You died..." when the players run out of health
+      debug(`screen set `(16+(HealthBar[1] / 2)) 528 color $1BDB18 box `(HealthBar[1]) 24)
   else
     debug(`screen set 88 528 red text 18 'You Died...')
 
@@ -1055,13 +1072,14 @@ pub PikminMotion() | RPikminPosX, RPikminPosY, YPikminPosX, YPikminPosY, BPikmin
 pub EasterEgg()
 
 repeat
-  repeat until data[6].[1] == 0 or data[6+8].[1] == 0
+  repeat until (data[6].[5]==0 and data[7].[7]==0 and data[6].[1]==0 and data[7].[2]==0) or (data[6+8].[5]==0 and data[7+8].[7]==0 and data[6+8].[1]==0 and data[7+8].[2]==0)
     waitms(FrameTime)
 
-  {Konami Code Activated}
+  {pvpState toggle}
   case pvpState
     true : pvpState:=false
     false : pvpState:=true
   repeat until data[6].[1] == 1 and data[6+8].[1] == 1
     waitms(FrameTime)
   waitms(FrameTime)
+
