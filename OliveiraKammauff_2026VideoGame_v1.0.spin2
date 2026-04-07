@@ -128,7 +128,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
   SpawnEnemies()
   CurrentLevel:=1
   PikminSizeBoost:=0                                    'Initializes game elements
-  pvpState:=false
+  pvpState:=true
   repeat                                          'This is the game's main repeat loop. Ideally all debug plot/screen commands should be in this loop (and the methods it calls). So all debug plot/screen commands should only be called by Cog 0
     StartTime:=getct()                            'Record current system clock counter value to know when this iteration of the main game loop starts
     'debug(`screen clear)
