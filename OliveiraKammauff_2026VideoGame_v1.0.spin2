@@ -7,7 +7,7 @@ con _clkfreq = 300_000_000              'Set system clock to 300MHz
   #0, x, y, width, height             '#0 resets the automatic constant counter number to 0 (just in case it has been changed by preceding unspecified constants), so here x=0, y=1, width=2, height=3 which is convenient for collision definitions arrays e.g., Momot[x] is the same as Momot[0], Momot[y] is the same as Momot[1], etc. (and for most people, it's easier to remember that the x index holds the x position value rather than the 0th index holds the x value!-)
 
   FrameTime=100                        'Set your target frame duration/period in milliseconds (i.e., frame rate). This value should probably be between around 50-100ms, i.e. the screen should be cleared and completely redrawn every 50-100ms. If you set your frame rate/frequency too high (i.e., set this FrameTime/period value too low) and don't have at least around 15ms of pause time between each loop, then the USB interface through which the P2 talks to your computer may get clobberred and bogged down, which can result in strange behavior such as the controller data seeming to lag way behind, appearing to make characters move on their own or long after the controls were pressed.
-  CollisionDebugMode=true            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
+  CollisionDebugMode=false            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
 
 
   {PROPERTIES}
@@ -101,7 +101,7 @@ var                                   'Declare global variables in this block, w
   long EnemyPos[6], EnemyHealth[3], Enemies[3], KillCounter, ActiveEnemies
 
   long BulletHealth, BulletRot, HealthBoostGranted, PikminHealth[3], Pikmin[12]                                   '
-  long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay, Frame                               'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
+  long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay, Frame, CurrentLevel, PikminSizeBoost                              'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
   'Create an empty array of 100 longs for each Cog
   'so that a Spin interpreter running on each has enough scratchpad RAM space
   'into which it can store temporary variables without accidentally overwriting other important data
@@ -133,7 +133,10 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
   cogspin(7,DebugDisplay(),@Stack7)               'Start up Cog 7 and tell it to run the DebugDisplay method in parallel to what's going on on all of the other cogs (Note: You are not required to have this feature in your final game i.e., if you need to use Cog 7 for something else)
   Momot:=100
   'DrawBackground()
-  SpawnActors()                 'Initializes game elements
+  SpawnActors()
+  SpawnEnemies()
+  CurrentLevel:=1
+  PikminSizeBoost:=0                                    'Initializes game elements
   repeat                                          'This is the game's main repeat loop. Ideally all debug plot/screen commands should be in this loop (and the methods it calls). So all debug plot/screen commands should only be called by Cog 0
     StartTime:=getct()                            'Record current system clock counter value to know when this iteration of the main game loop starts
     'debug(`screen clear)
@@ -229,6 +232,27 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
           PikminHealth[1]:=(PikminHealth[1] - 50)
 
 
+    if(PikminHealth[2] > 16)
+      if CheckCollision(@HitBoxes,@Pikmin[8])
+        if playerState[7] == false
+          HealthBar[0]:=(HealthBar[0] - 2)
+      if CheckCollision(@HitBoxes[4],@Pikmin[8])
+        if playerState[16] == false
+           HealthBar[1]:=(HealthBar[1] - 4)
+
+    if(PikminHealth[2] > 16)
+      if CheckCollision(@playerPos,@Pikmin[8])
+        if playerState[5]
+          PikminHealth[2]:=(PikminHealth[2] - 25)
+        if playerState[6]
+          PikminHealth[2]:=(PikminHealth[2] - 40)
+      if CheckCollision(@GGBATT, @Pikmin[8])
+        if playerState[14]
+          PikminHealth[2]:=(PikminHealth[2] - 15)
+      if CheckCollision(@GGHeATT, @Pikmin[8])
+        if playerState[15]
+          PikminHealth[2]:=(PikminHealth[2] - 50)
+
     if(BulletHealth > 16)
       if CheckCollision(@playerPos,@BulletB)
         if playerState[5]
@@ -242,6 +266,13 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
         if playerState[15]
           BulletHealth:=(BulletHealth - 40)
 
+
+    if KillCounter > 13
+      if CurrentLevel <= 3
+        CurrentLevel := CurrentLevel + 1
+        SpawnEnemies()
+        KillCounter:=0
+        PikminSizeBoost:=1
 
 
     if HealthBar[0] < 0 and HealthBar[1] < 0
@@ -679,13 +710,18 @@ pub DefineCollisionAreas() | i
 
   Pikmin[0]:=750
   Pikmin[1]:=125
-  Pikmin[2]:=32
-  Pikmin[3]:=90
+  Pikmin[2]:=32 + PikminSizeBoost*16
+  Pikmin[3]:=90 + PikminSizeBoost*16
 
   Pikmin[4]:=750
   Pikmin[5]:=125
-  Pikmin[6]:=32
-  Pikmin[7]:=90
+  Pikmin[6]:=32 + PikminSizeBoost*16
+  Pikmin[7]:=90 + PikminSizeBoost*16
+
+  Pikmin[8]:=750
+  Pikmin[9]:=125
+  Pikmin[10]:=32 + PikminSizeBoost*16
+  Pikmin[11]:=90 + PikminSizeBoost*16
 
   HitBoxes[x]:=playerPos[x]+16
   HitBoxes[y]:=playerPos[y]
@@ -749,6 +785,7 @@ pub DrawGame()                  'Responsible for rendering the sprites to the de
     DrawBackground()
 
     DrawActors()
+    DrawLevel(CurrentLevel)
 
 pub DrawBackground() | i,j
 
@@ -767,6 +804,8 @@ pub DrawBackground() | i,j
 
   debug(`screen set 88 600 blue text 18 'Momot')
   debug(`screen set 88 552 blue text 18 'Garner')
+
+  debug(`screen set 400 400 red text 48 'Level `(CurrentLevel)')
 
   if HealthBar[0] > 0
     debug(`screen set 88 576 color $DB1818 box 144 24)
@@ -806,14 +845,16 @@ pub SpawnActors()
     GGAtt:=25
     GGHAtt:= 27
     KillCounter:=0
+
+pub SpawnEnemies()
     {Enemy Initial States}
     BulletHealth:=255
     BulletRot:=1
     Pikmin[0]:=750
     Pikmin[1]:=50 + getrnd()+//200
     PikminHealth[0]:=255
-    Pikmin[2]:=750
-    Pikmin[3]:=50 + getrnd()+//200
+    Pikmin[4]:=750
+    Pikmin[5]:=50 + getrnd()+//200
     PikminHealth[1]:=255
     HealthBoostGranted := false
 
@@ -851,7 +892,7 @@ pub DrawLevel(level)    'Method that spawns enemies for each different level'
           BulletHealth:= 255
           BulletB[0]:=700              'Respawn by resetting enemy properties'
           BulletB[1]:= 50 + getrnd()+//200
-          BulletRot:=0
+          BulletRot:= 1
       if (PikminHealth[0] > 16)
         debug(`screen set `(Pikmin[0]), `(Pikmin[1])) sprite (29, 0, 3, `(PikminHealth[0]))
         debug(`screen set `(Pikmin[0]), `(Pikmin[1]-48)) sprite (31, 0, 3, `(PikminHealth[0]))
@@ -870,9 +911,34 @@ pub DrawLevel(level)    'Method that spawns enemies for each different level'
           PikminHealth[1] := 255
           Pikmin[4]:=750
           Pikmin[5]:=50 + getrnd()+//200
-
-
-
+    2 : {Level Two}
+      if (PikminHealth[2] > 16)
+        debug(`screen set `(Pikmin[8]), `(Pikmin[9])) sprite (35, 0, 3, `(PikminHealth[2]))
+        debug(`screen set `(Pikmin[8]), `(Pikmin[9]-48)) sprite (39, 0, 3, `(PikminHealth[2]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 15
+          PikminHealth[2]:= 255
+          Pikmin[8]:=750
+          Pikmin[9]:=50 + getrnd()+//200
+      if (PikminHealth[0] > 16)
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1])) sprite (29, 0, `(3+3*PikminSizeBoost), `(PikminHealth[0]))
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1]-48)) sprite (31, 0, `(3+3*PikminSizeBoost), `(PikminHealth[0]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          PikminHealth[0] := 255
+          Pikmin[0]:=750
+          Pikmin[1]:=50 + getrnd()+//200
+      if (PikminHealth[1] > 16)
+        debug(`screen set `(Pikmin[4]), `(Pikmin[5])) sprite (33, 0, 3, `(PikminHealth[1]))
+        debug(`screen set `(Pikmin[4]), `(Pikmin[5]-48)) sprite (37, 0, 3, `(PikminHealth[1]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          PikminHealth[1] := 255
+          Pikmin[4]:=750
+          Pikmin[5]:=50 + getrnd()+//200
 
 pub ShowInstructions() | i
   debug(`term Instructions pos 140 100 size 75 24 textsize 12 color black white backcolor white)  'Create a new debug terminal window called called "Instructions" at x=140 y=100 on the PC screen (overlaid on plot window)                                                                                            ' that is 75 spaces wide by 10 lines deep with text color=black on white with white background and font size 12
@@ -979,28 +1045,64 @@ pub EnemyMotion()
         waitms(175)
       BulletRot:= 1
 
-pub PikminMotion() | PikminPosX, PikminPosY
-  PikminPosX := Pikmin[0]
-  PikminPosY := Pikmin[1]
-    repeat
+pub PikminMotion() | RPikminPosX, RPikminPosY, YPikminPosX, YPikminPosY, BPikminPosX, BPikminPosY, i
+  RPikminPosX := Pikmin[0]
+  RPikminPosY := Pikmin[1]
+  YPikminPosX := Pikmin[4]
+  YPikminPosY := Pikmin[5]
+
+  repeat
       if PikminHealth[0] > 16
         if Pikmin[0] > 16
-          repeat until Pikmin[0]<=PikminPosX-64
+          repeat i from 0 to 4
             Pikmin[0]:=Pikmin[0]-16
             waitms(175)
         else
           Pikmin[0]:= 750
-        PikminPosX := Pikmin[0]
+        RPikminPosX := Pikmin[0]
         if Pikmin[1] < 250
-          repeat until Pikmin[1]>=PikminPosY+150
+          repeat i from 0 to 4
             Pikmin[1]:=Pikmin[1]+16
             waitms(175)
         else
-          repeat until Pikmin[1]<=PikminPosY-150
+          repeat i from 0 to 4
             Pikmin[1]:=Pikmin[1]-16
             waitms(175)
-        PikminPosY := Pikmin[1]
-
+        RPikminPosY := Pikmin[1]
+      if PikminHealth[1] > 16
+        if Pikmin[4] > 16
+          repeat i from 0 to 4
+            Pikmin[4]:=Pikmin[4]-24
+            waitms(175)
+        else
+          Pikmin[4]:= 750
+        YPikminPosX := Pikmin[0]
+        if Pikmin[5] < 250
+          repeat i from 0 to 4
+            Pikmin[5]:=Pikmin[5]+24
+            waitms(175)
+        else
+          repeat i from 0 to 4
+            Pikmin[5]:=Pikmin[5]-24
+            waitms(175)
+        YPikminPosY := Pikmin[5]
+      if PikminHealth[2] > 16
+        if Pikmin[8] > 16
+          repeat i from 0 to 4
+            Pikmin[8]:=Pikmin[8]-16
+            waitms(175)
+        else
+          Pikmin[8]:= 750
+        BPikminPosX := Pikmin[8]
+        if Pikmin[9] < 250
+          repeat i from 0 to 4
+            Pikmin[9]:=Pikmin[9]+16
+            waitms(175)
+        else
+          repeat i from 0 to 4
+            Pikmin[9]:=Pikmin[9]-16
+            waitms(175)
+        BPikminPosY := Pikmin[9]
 pub KonamiCodeEasterEgg()
 
 repeat
