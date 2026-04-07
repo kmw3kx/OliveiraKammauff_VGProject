@@ -97,12 +97,14 @@ var                                   'Declare global variables in this block, w
 
   long EnemyPos[6], EnemyHealth[3], Enemies[3], KillCounter, ActiveEnemies
 
+  long pvpState
+
   long BulletHealth, BulletRot, HealthBoostGranted, PikminHealth[3], Pikmin[12]                                   '
   long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay, Frame, CurrentLevel, PikminSizeBoost                              'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
   'Create an empty array of 100 longs for each Cog
   'so that a Spin interpreter running on each has enough scratchpad RAM space
   'into which it can store temporary variables without accidentally overwriting other important data
-  long Stack0[290], Stack1[100], Stack2[100], Stack3[100], Stack4[100], Stack5[5], Stack6[5], Stack7[100]
+  long Stack0[100], Stack1[100], Stack2[100], Stack3[100], Stack4[100], Stack5[100], Stack6[100], Stack7[100]
 
 pub VideoGame() | i                   'This method runs on Cog 0 (which is what everything automatically starts running on by default)
   debug(`plot screen pos 100 0 size 768 640 backcolor black update) 'Create the main 768x640 pixel plot window for the game called "screen"
@@ -120,7 +122,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
   cogspin(2, GarnerMotion(),@Stack2)                       'Frame rate not good; run in main loop
   cogspin(3, EnemyMotion(),@Stack3)                'Start up Cog 1 and tell it to run the MarioMotion method in parallel to what's already running on Cog 0
   cogspin(4, PikminMotion(), @Stack4)
-  'cogspin(5, gravity(), @Stack5)                        'Just deals with the gravity calculations
+  cogspin(5, EasterEgg(), @Stack5)                        'Just deals with the gravity calculations
   cogspin(7,DebugDisplay(),@Stack7)               'Start up Cog 7 and tell it to run the DebugDisplay method in parallel to what's going on on all of the other cogs (Note: You are not required to have this feature in your final game i.e., if you need to use Cog 7 for something else)
   Momot:=100
   'DrawBackground()
@@ -128,6 +130,7 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
   SpawnEnemies()
   CurrentLevel:=1
   PikminSizeBoost:=0                                    'Initializes game elements
+  pvpState:=false
   repeat                                          'This is the game's main repeat loop. Ideally all debug plot/screen commands should be in this loop (and the methods it calls). So all debug plot/screen commands should only be called by Cog 0
     StartTime:=getct()                            'Record current system clock counter value to know when this iteration of the main game loop starts
     'debug(`screen clear)
@@ -249,6 +252,9 @@ pub VideoGame() | i                   'This method runs on Cog 0 (which is what 
       if CheckCollision(@GGHeATT, @BulletB)
         if playerState[15]
           BulletHealth:=(BulletHealth - 40)
+    if pvpState
+      if(BulletHealth > 16)
+
 
 
     if KillCounter > 13
@@ -290,8 +296,7 @@ pub DebugDisplay()                                  'Use to display variables on
       debug(`term1 'L Stick P2= `(dataP2[0]) `(dataP2[2])',10)
       debug(`term1 'R Stick P2 = `(dataP2[1]) `(dataP2[3])',10)
 
-      debug(`term1 'MomotJump: deltay:`(deltay[0]); height: `(heightOffGround)',10
-      )
+      debug(`term1 'pvpState: `(pvpState)',10)
       debug(`term1 'LoopTime = `(LoopTime)' 'µs',10)
       debug(`term1 'Frame Wait Time = `(FrameWaitTime)' 'µs',10)
 
@@ -533,8 +538,15 @@ pub GarnerMotion() | p
       }
 
     if playerState[2+9*p]==false            'Check to see if Cog 0 has set the MomotMoving flag to be true or false
-      {Idle State -- Make eye movement happer}
-      Garner:= GGIC
+      {Idle State -- Make eye movement happen; GGIU, GGIUR, GGIR}
+      if data[15].[7] == 0
+        case_fast Garner
+          GGIC : Garner:= GGIU
+          GGIU : Garner:= GGIUR
+          GGIUR : Garner:= GGIR
+          GGIR : Garner:=GGIC
+      else
+        Garner:= GGIC
       repeat until playerState[2+9*p]==true 'Repeat until moving
         'case_fast Garner
     if playerState[2+9*p]==true
@@ -1039,3 +1051,17 @@ pub PikminMotion() | RPikminPosX, RPikminPosY, YPikminPosX, YPikminPosY, BPikmin
             Pikmin[9]:=Pikmin[9]-16
             waitms(175)
         BPikminPosY := Pikmin[9]
+
+pub EasterEgg()
+
+repeat
+  repeat until data[6].[1] == 0 or data[6+8].[1] == 0
+    waitms(FrameTime)
+
+  {Konami Code Activated}
+  case pvpState
+    true : pvpState:=false
+    false : pvpState:=true
+  repeat until data[6].[1] == 1 and data[6+8].[1] == 1
+    waitms(FrameTime)
+  waitms(FrameTime)
