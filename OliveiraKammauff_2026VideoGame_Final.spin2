@@ -1,0 +1,1145 @@
+{2026VideoGameDemo_v1.0}
+con _clkfreq = 300_000_000              'Set system clock to 300MHz
+  'debug_baud = 2_000_000              'You probably do not need to adjust the Debug baud rate at which the P2 and your PC communicate over their serial interface from its default value of 2 million bits per second. This commented-out line is included just in case you need to change this.
+  'debug_delay = 500                   'You may find you need to add this 1/2 second wait before sending data to the PC's Debug window (in case your PC is slow and needs time to catch up and open the plot window before the P2 starts sending data to it)
+
+  RJoyXMin=4, RJoyXMax=252, RJoyYMin=4, RJoyYMax=252, LJoyXMin=2, LJoyXMax=254, LJoyYMin=4, LJoyYMax=252 'Your Wii Controller probably uses these default range values, but not all of them have been tested. You can use the Wii Controller Tester program to verify exactly what values your controller outputs
+  #0, x, y, width, height             '#0 resets the automatic constant counter number to 0 (just in case it has been changed by preceding unspecified constants), so here x=0, y=1, width=2, height=3 which is convenient for collision definitions arrays e.g., Momot[x] is the same as Momot[0], Momot[y] is the same as Momot[1], etc. (and for most people, it's easier to remember that the x index holds the x position value rather than the 0th index holds the x value!-)
+
+  FrameTime=100                        'Set your target frame duration/period in milliseconds (i.e., frame rate). This value should probably be between around 50-100ms, i.e. the screen should be cleared and completely redrawn every 50-100ms. If you set your frame rate/frequency too high (i.e., set this FrameTime/period value too low) and don't have at least around 15ms of pause time between each loop, then the USB interface through which the P2 talks to your computer may get clobberred and bogged down, which can result in strange behavior such as the controller data seeming to lag way behind, appearing to make characters move on their own or long after the controls were pressed.
+  CollisionDebugMode=false            'Setting this to be true draws red boxes around all entities that are checked for collisions, but doing this can significant slow down your main loop. Therefore, only enable this feature for a brief time while debugging specific problems i.e., don't keep this active/true throughout your entire game making process!
+
+
+  {PROPERTIES}
+
+  {SPRITE NAMES}
+  #100 'Explaining the above comment quickly; spin2 auto increments constants w/out definitions,
+        'and the #n sets the incrementer at n
+  {Momot (MM) Sprites}
+  MM_I '[100]; Idle
+  MMSTEP0,MMSTEP1,MMSTEP2  ' [101-103]; combine w/ MM_I for walk cycle
+
+  MMSPLAY ' [104]; his legs are splayed
+  MMCROUCH ' [105]; One knee down
+  MMRISE ' [106]; he is ascending, men of galilee
+  MMFLOAT ' [107]; midair crouch
+  MM8 ' [108];
+  MMFALL ' [109] ' coming back down to earth
+        'Can be continued if desired
+  {Garner (GG) Sprites} ' [#-#] inclusive; Explanation
+  #0
+  GGIC, GGIU, GGIUR, GGIR ' [0-3];Idle + eye movement (Center, up, up-right, right)
+  GGTALK ' [4]Switch w/ GGIC
+  GGWALK0, GGWALK1, GGWALK2 ' [5-7]Walk Cycle
+  GGJUMP ' [8] Legs split
+  GGINSTRUCT ' [9] He's leading w/ his left & his mouth is open
+  GGKIDS0, GGKIDS1, GGKIDS2, GGKIDS3 ' [10-13] Looks like he's waving his arms shouting "lousy kids."
+  ' Could also be a hurt animation.
+  GGFLY, GGFLYSTRUCT '[14-15] Flying, Attacking (i.e. like instruct)
+  GGLAND, GGFALL, GGCROUCH ' [16-18] self-explanatory
+  GGCLIMB[2] ' [19-20] Think Mario on vine; facing away from the screen  Need to update
+  PROPLR[4] ' [21-24] The hat         Need to update
+
+
+obj
+  sprites : "OliveiraKammauffSprites_v2"    'Include 112#methods from your external "YourNameSprites" object. Of course, you should change the "YourName" part to be your actual name (LastFirst) for your unique sprite data loading object. Both this external object and your game file will be needed to play your game (so be sure to submit both!).
+  i2c[2]     : "jm_i2c"                  'Include methods from jm_i2c bus driver so that the Wii Controller can communicate with the P2 chip over an I2C interface
+
+var                                   'Declare global variables in this block, which can all be read or changed by any of the eight cogs at any time
+  byte data[16], dataP2[8]                       'These array of 8 bytes is used to store data sent to the P2 chip from the Wii Classic Controller Pro. Your game must include this variable delcaration along with the SetupController and ReadController methods.
+  long MomotPos[4], BulletB[4],HealthBoost[4], GarnerPos[4]          'Use arrays of 4 longs like these to keep track of all of your characters' data:
+                                                                                'upper-left pixel's x-position, upper-left pixel's y-position, overall width, overall height.
+
+  {Player Arrays and Variables:
+  playerPos -> Player Position and Size
+  playerState -> Records What the Player is Doing (Jumping, Blocking, Attacking, etc.)
+  HitBoxes -> Store the Collision Areas for How Players Take Damage
+  playerz -> Used for the "Gravity" Effect of Jumping
+  HealthBar -> Stores Current Player Health
+  Garner + Momot -> Control Which Sprite is Displayed for Them
+  }
+  long playerPos[8], playerState[18], HitBoxes[8], playerz[2], HealthBar[2], Momot, Garner
+
+  {for playerState:
+  [0] Sprite Number (unused), [1] Rotation, [2] Moving, [3] Opacity, [4] Jumping, [5] Punching/Throwing, [6] Kicking, [7] Blocking, [8] Hit}                                                                             'See the DefineCollisionAreas method below.
+
+
+  {Position Arrays: Help Control Movement of Player and Interactions with the Controllers}
+
+  long deltax[2], x_prev[2], y_prev[2], LJoyX[2], LJoyY[2], deltay[2] ' deltay deals only with jump speed
+  long heightOffGround[2] ' Lets us know when they're landing
+
+  long pvpState
+
+  {Attack Arrays and Variables:
+  PunchRight -> Variable Used to Alternate Momot's Base Attack Motion
+  GGAtt -> Variable Used to Store Garner's Base Attack Sprite and Alternate It
+  GGHAtt -> Variable Used to Store Garner's Heavy Attack Sprite and Alternate It
+  GGBATT + GGHeATT -> Arrays used to Define Garner's Attack Collision Areas
+  }
+  long PunchRight, GGAtt, GGHAtt, GGBATT[4], GGHeATT[4]
+
+  {Enemy Arrays and Variables:
+  BulletHealth -> Stores Bullet Bill Health
+  BulletRot -> Stores Bullet Bill Rotation
+  PikminHealth -> Stores the Health Bars
+  Pikmin -> Stores the Position and Collision Area For All Three Types of Pikmin
+  }
+  long BulletHealth, BulletRot, PikminHealth[3], Pikmin[12]
+
+  {Game State Variables:
+  KillCounter ->  Counts Enemies That Have Been Killed
+  ActiveEnemies -> Keeps Track of How Many Enemies Are on the Screen
+  HealthBoostGranted -> Keeps Track of If The HealthBoost Has Been Consumed
+  CurrentLevel -> Tracks Current Level
+  KillCounterCheck -> Keeps Track of the KillCounter Threshold that Finishes the Level
+  RandomCheck -> Randomly Generated Number to Make the HealthBoost Spawn Random
+  SpawnBoost -> HealthBoost Flag
+  RPos -> Randomly Generated Position of HealthBoost
+  Game Win + Lost -> Flags for if the game is won/lost
+  }
+
+  long KillCounter, ActiveEnemies, HealthBoostGranted, CurrentLevel, KillCounterCheck, RandomCheck, SpawnBoost,RPosX, RPosY, GameWon, GameLost
+                                  '
+  long FrameRate, FrameWaitTime, StartTime, RawLoopTime, LoopTime, DisplayDelay, Frame                              'These variables help to keep track of your game's frame rate i.e., how long it takes to run through your main game loop and redraw the screen
+  'Create an empty array of 100 longs for each Cog
+  'so that a Spin interpreter running on each has enough scratchpad RAM space
+  'into which it can store temporary variables without accidentally overwriting other important data
+  long Stack0[290], Stack1[100], Stack2[100], Stack3[100], Stack4[100], Stack5[5], Stack6[5], Stack7[100]
+
+pub VideoGame() | i                 'This method runs on Cog 0 (which is what everything automatically starts running on by default)
+  debug(`plot screen pos 100 0 size 768 640 backcolor black update) 'Create the main 768x640 pixel plot window for the game called "screen"
+  debug(`screen set 400 330 blue text 50 'Loading sprites...')
+  debug(`screen update)               'Refresh the screen in order to display the "Loading sprites" message. Note: You must always run an "update" command in order to actually see any changes you make to the debug data! In other words, calling other "debug" commands only changes the data for the next time that the screen is updated. Other debug commands do NOT automatically update the screen!!!
+  SetupController(0)                   'Call the SetupController method to set up the I2C interface between the P2 and the 0th Wii Controller
+  SetupController(1)                   'Call the SetupController method again, this time setting up Controller 1
+  sprites.LoadSprites()               'Run the LoadSprites method from within your own Sprites object (a separate file) to upload all of your sprite data from the P2 chip's RAM into your PC's RAM
+  debug(`screen clear update)         'Erase everything on the plot screen and update the screen (to erase the "Loading Sprites" text)
+  ShowInstructions()                  'Display the instructions by overlaying a new debug text terminal over top of the video game's plot window
+
+
+
+  cogspin(1, MomotMotion(),@Stack1)
+  cogspin(2, GarnerMotion(),@Stack2)                       'Frame rate not good; run in main loop
+  cogspin(3, EnemyMotion(),@Stack3)                'Start up Cog 1 and tell it to run the MarioMotion method in parallel to what's already running on Cog 0
+  cogspin(4, PikminMotion(), @Stack4)
+  cogspin(5, EasterEgg(), @Stack5)
+  cogspin(7,DebugDisplay(),@Stack7)               'Start up Cog 7 and tell it to run the DebugDisplay method in parallel to what's going on on all of the other cogs (Note: You are not required to have this feature in your final game i.e., if you need to use Cog 7 for something else)
+  SpawnActors()
+  SpawnEnemies()
+  DefineCollisionAreas()                           'Call the method that sets up the rectangles around objects that will be used to detect collisions
+  if RandomCheck == 5
+    SpawnBoost:=true
+  CurrentLevel:=1                                 'Initializes game elements
+  pvpState:=true
+  repeat                                          'This is the game's main repeat loop. Ideally all debug plot/screen commands should be in this loop (and the methods it calls). So all debug plot/screen commands should only be called by Cog 0
+    StartTime:=getct()                            'Record current system clock counter value to know when this iteration of the main game loop starts
+    'debug(`screen clear)
+    {Erase everything on the screen. Note: If you draw/redraw things over the entire screen
+    (as the DrawBackground method does in this demo), then this statement is not necessary.
+    You also may want to keep (i.e. not clear and redraw every frame) certain parts of your
+    background that a character will never move on top of (to save time in each iteration of your main game loop)
+     }
+
+    {Draw the Game}
+    DrawGame()
+
+    {Get Controller Data}
+    ReadController(0)
+    ReadController(1)
+
+    {Update Game State}
+
+    if HealthBar[0] > 0      'Checks if the Player is still alive and if they are proceeds to check their different states'
+      getPlayerState(1)       'Checks Player States'
+
+    if HealthBar[1] > 0
+      getPlayerState(2)
+
+    if KillCounter > KillCounterCheck       'Checks If Enough Enemies Have Been Killed to Go to the Next Level'
+      if CurrentLevel < 3                   'Levels Only go Up to 3'
+        CurrentLevel := CurrentLevel + 1     'Go to Next Level'
+        SpawnEnemies()                       'Reset Enemy Attributes to be Reused in the next level'
+        KillCounter:=0                       'Reset Kill Counter'
+        case_fast CurrentLevel               'Set New KillCounter Target'
+          2 : KillCounterCheck:=12
+          3 : KillCounterCheck:=22
+
+    if KillCounter > KillCounterCheck  and CurrentLevel == 3     'Checks if all enemies in level 3 have been cleared'
+      GameWon:=true                                                        'Win Screen'
+
+
+    if HealthBar[0] < 0 and HealthBar[1] < 0                     'Checks if Both Players have lost all their health'
+      GameLost:=true                                                  'Lose Screen'
+
+
+                                                                  'Check whether or not the game has ended'
+    if GameWon or GameLost
+      if data[6].[2]==0                                            'Reset every enemy and player variable'
+        SpawnActors()
+        SpawnEnemies()
+        DefineCollisionAreas()
+        if RandomCheck == 5
+          SpawnBoost:=true
+        CurrentLevel:=1
+        if GameWon                                                 'Set the game back to being playable by making the current end game condition false'
+          GameWon:= false
+        if GameLost
+          GameLost:= false
+
+    {Collision Checks:
+    Defines Every Interaction Between Players, Enemies, and HealthBoost
+    }
+
+    if GameWon == false and GameLost == false
+      if (CurrentLevel == 2 and HealthBoostGranted == false and SpawnBoost == true)   'May or may not spawn a HealthBoost at the beginning of level 2'
+        if CheckCollision(@playerPos,@HealthBoost) and playerState[5]                 'Player must "collide" with the boost and use their base attack to collect it'
+          HealthBar[0]:=(HealthBar + 72)                                               'Boost restores 72 health points (50% of HealthBar)'
+          if HealthBar[0]>144                                                          'These statements make sure boost doesn't make the current health suprass the length og the healthbars'
+           HealthBar[0]:=144
+          HealthBoostGranted:=true
+        if CheckCollision(@playerPos[4],@HealthBoost) and playerState[14]              'Same logic as above but for player 2'
+            HealthBar[1]:=(HealthBar + 50)
+          if HealthBar[1]>144
+            HealthBar[1]:=144
+          HealthBoostGranted:=true
+
+      if(BulletHealth > 25 and CurrentLevel <> 2)                                    'Beacause enemy health is shown through opacity, enemy health checks
+        if CheckCollision(@HitBoxes,@BulletB)                                          'don't go all the way down to 0, but instead 25'
+          if playerState[7] == false                                                  'Check Enemy Health and because the Bullets are not in level 2, which level they are in'
+            HealthBar[0]:=(HealthBar[0] - 1)                                         'Check Collision with Player Hitboxes'
+        if CheckCollision(@HitBoxes[4],@BulletB)                                     'If colliding with a hitbox deal damage'
+          if playerState[16] == false                                                 'If Blocking States are active Enemies do not deal damage'
+             HealthBar[1]:=(HealthBar[1] - 2)
+
+      if(BulletHealth > 25 and CurrentLevel <> 2)                                 'Is enemy alive check'
+        if HealthBar[0] > 0
+          if CheckCollision(@playerPos,@BulletB)                                  'Check Collision with Momot's offensive hitbox'
+            if playerState[5]                                                     'Deal a certain amount of damage depending on which state player is in: Base or Heavy Attack'
+              BulletHealth:=(BulletHealth - 15)                                   'Each attack deals a different amount of damage'
+            if playerState[6]                                                     'For the Bullet Momot deals 15 HP for Base attack and 30 HP for heavy'
+              BulletHealth:=(BulletHealth - 30)
+        if HealthBar[1] > 0
+          if CheckCollision(@GGBATT, @BulletB)                                    'Same checks for Garner except checks collisions with the lightning hitboxes'
+            if playerState[14]                                                    'Heavy Attack Hit Box is smaller to balance both attacks'
+              BulletHealth:=(BulletHealth - 10)
+          if CheckCollision(@GGHeATT, @BulletB)
+            if playerState[15]
+              BulletHealth:=(BulletHealth - 40)
+
+      if(PikminHealth[0] > 25)
+        if CheckCollision(@HitBoxes,@Pikmin)
+          if playerState[7] == false
+            HealthBar[0]:=(HealthBar[0] - 3)
+        if CheckCollision(@HitBoxes[4],@Pikmin)
+          if playerState[16] == false
+             HealthBar[1]:=(HealthBar[1] - 6)
+
+      if(PikminHealth[0] > 25)
+        if CheckCollision(@playerPos,@Pikmin)
+          if playerState[5]
+            PikminHealth[0]:=(PikminHealth[0] - 25)
+          if playerState[6]
+            PikminHealth[0]:=(PikminHealth[0] - 40)
+        if CheckCollision(@GGBATT, @Pikmin)
+          if playerState[14]
+            PikminHealth[0]:=(PikminHealth[0] - 15)
+        if CheckCollision(@GGHeATT, @Pikmin)
+          if playerState[15]
+            PikminHealth[0]:=(PikminHealth[0] - 50)
+
+
+
+      if(PikminHealth[1] > 25)
+        if HealthBar[0] > 0
+          if CheckCollision(@HitBoxes,@Pikmin[4])
+            if playerState[7] == false
+              HealthBar[0]:=(HealthBar[0] - 2)
+        if HealthBar[1] > 0
+          if CheckCollision(@HitBoxes[4],@Pikmin[4])
+            if playerState[16] == false
+              HealthBar[1]:=(HealthBar[1] - 4)
+
+      if(PikminHealth[1] > 25)
+        if HealthBar[0] > 0
+          if CheckCollision(@playerPos,@Pikmin[4])
+            if playerState[5]
+              PikminHealth[1]:=(PikminHealth[1] - 25)
+            if playerState[6]
+              PikminHealth[1]:=(PikminHealth[1] - 40)
+        if HealthBar[1] > 0
+          if CheckCollision(@GGBATT, @Pikmin[4])
+            if playerState[14]
+              PikminHealth[1]:=(PikminHealth[1] - 15)
+          if CheckCollision(@GGHeATT, @Pikmin[4])
+            if playerState[15]
+              PikminHealth[1]:=(PikminHealth[1] - 50)
+
+
+      if(PikminHealth[2] > 25)
+        if HealthBar[0] > 0
+          if CheckCollision(@HitBoxes,@Pikmin[8])
+            if playerState[7] == false
+              HealthBar[0]:=(HealthBar[0] - 2)
+        if HealthBar[1] > 0
+          if CheckCollision(@HitBoxes[4],@Pikmin[8])
+            if playerState[16] == false
+               HealthBar[1]:=(HealthBar[1] - 4)
+
+      if(PikminHealth[2] > 25)
+        if HealthBar[0] > 0
+          if CheckCollision(@playerPos,@Pikmin[8])
+            if playerState[5]
+              PikminHealth[2]:=(PikminHealth[2] - 15)
+            if playerState[6]
+              PikminHealth[2]:=(PikminHealth[2] - 30)
+        if HealthBar[1] > 0
+          if CheckCollision(@GGBATT, @Pikmin[8])
+            if playerState[14]
+              PikminHealth[2]:=(PikminHealth[2] - 5)
+          if CheckCollision(@GGHeATT, @Pikmin[8])
+            if playerState[15]
+              PikminHealth[2]:=(PikminHealth[2] - 35)
+
+        {EASTER EGG-allow for pvp}
+      if pvpState
+        if CheckCollision(@HitBoxes,@GGBATT)
+          if playerState[7] == false and playerState[5+9] == true 'GG basic attack
+            HealthBar[0]:=(HealthBar[0] - 1)
+        if CheckCollision(@HitBoxes[4],@playerPos)
+          if playerState[16] == false and playerState[5] == true 'MM punch
+             HealthBar[1]:=(HealthBar[1] - 15)
+        if CheckCollision(@HitBoxes,@GGHeATT)
+          if playerState[7] == false and playerState[6+9] == true 'GG heavy
+            HealthBar[0]:=(HealthBar[0] - 2)
+        if CheckCollision(@HitBoxes[4],@playerPos)
+          if playerState[16] == false and playerState[6] == true 'MM heavy
+            HealthBar[1]:=(HealthBar[1] - 30)
+
+    ''It is highly recommended that you include the following code in your game
+    Frame:=getct()
+      FrameRate:=FrameTime*300_000 - abs(StartTime-Frame)   'Calculate the number of clock pulses remaining (that you need to pause for) to hit the target frame rate (specified by your FrameTime constant)
+      if FrameRate<=0                                 'If the loop has taken more than the target frame time, display warning message. If you see this message, you need to increase the value of your FrameTime constant or decrease the amount of code (especially debug commands) running in your game's main repeat loop
+        debug(`screen set 384 600 red text 20 'Frame loop took longer than 100ms!!!')              '
+      waitct(FrameRate+getct())
+      debug(`screen update)                           'Force game window to update then wait/delay 60ms Hint: Experiment with a delay of 0-100ms to get your total loop time (the time it takes to draw/redraw each frame/image) to be around 50-150 milliseconds. Just experiment with what works best for your final game to run smoothly.
+      RawLoopTime:=abs(StartTime-getct())             'Record total loop time (not counting debug delay below) units=1/300_000_000=3.3333 nanoseconds
+
+
+pub DebugDisplay()                                  'Use to display variables on the screen (Note: You could put this onto a separate cog if you need for your main game repeat loop on Cog 0 to run faster)
+  debug(`term term1 pos 867 0 size 28 12 textsize 18 color cyan)    'Create terminal window to display variables to help with debugging or to display a score
+  DisplayDelay:=clkfreq/5+getct()                   'Store a system clock "Tick" time that is 0.2 seconds in the future
+
+  repeat
+    LoopTime:=RawLoopTime*10/3000                   'Convert RawLoopTime (in units of system clock pulses) into microseconds
+    FrameWaitTime:=FrameRate*10/3000                'Convert FrameRate (in units of system clock pulses) into microseconds. This should be
+    if pollct(DisplayDelay)==true                   'Check to see if system counter has exceeded the DisplayDelay value
+      'Erase everything on the terminal (text) window
+      debug(`term1 clear)
+      'Display any values that might be helpful when debugging, 10=New Line (so it creates a new line after printing)
+      debug(`term1 'L Stick P1= `(data[0]) `(data[2])',10)
+      debug(`term1 'R Stick P1 = `(data[1]) `(data[3])',10)
+
+      debug(`term1 'L Stick P2= `(dataP2[0]) `(dataP2[2])',10)
+      debug(`term1 'R Stick P2 = `(dataP2[1]) `(dataP2[3])',10)
+
+      debug(`term1 'MomotJump: deltay:`(deltay[0]); height: `(heightOffGround)',10
+      )
+      debug(`term1 'LoopTime = `(LoopTime)' 'µs',10)
+      debug(`term1 'Frame Wait Time = `(FrameWaitTime)' 'µs',10)
+
+      DisplayDelay:=DisplayDelay+clkfreq/5          'Add another 0.2 second worth of system clock pulses to DisplayDelay time (for the next delay)
+
+pub getPlayerState(player) | p, pos[4], i
+
+    p:= player - 1
+
+    deltax[p]:=abs(playerPos[x+4*p]-x_prev[p])                  'Difference between current x and previous x position (how far character has moved since last main loop iteration)
+    x_prev[p]:=playerPos[x+4*p]                              'Store p's previous x position
+    y_prev[p]:=playerPos[y+4*p]                              'Store p's previous y position
+
+    'add the deltay value to the height off ground
+    heightOffGround[p]:=0#> heightOffGround[p] + deltay[p]<#640
+    {
+    'Check the 4th bit of the 6th data byte from the controller, which is the -/select button.
+    'If it is pressed (=0 in inverted logic), then call the GamePause method to pause the game
+    if d[6].[4]==0
+      PauseGame(p)
+    }
+    LJoyX[p]:=0#>(data[0+8*p]-LJoyXMin)*100/(LJoyXMax-LJoyXMin)<#100   'Scale the left joystick's analog X and Y ranges to be between 0-100
+    LJoyY[p]:=0#>(data[2+8*p]-LJoyYMin)*100/(LJoyYMax-LJoyYMin)<#100   'Note that enclosing a computation or result between #> and <# in Spin2 limits the minimum and maximum value (in this case to beween 0 and 100)
+
+    case_fast LJoyX[p]
+       0..20  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-16 <#740           'Same logic as Video Game Demo'
+      21..30  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-8 <#740
+      31..40  : playerPos[x+4*p]:=0#> playerPos[x+4*p]-4 <#740
+      61..70  : playerPos[x+4*p]:=0#> playerPos[x+4*p]+4 <#740
+      71..80  : playerPos[x+4*p]:=0#> playerPos[x+4*p]+8 <#740
+      81..100 : playerPos[x+4*p]:=0#> playerPos[x+4*p]+16 <#740
+
+    case_fast LJoyY[p]                                                     'Vertical limit set to 312 to emulate the "2.5D" effect of the game'
+      0..20  : playerz[p]:=64#> playerz[p]-16 <#312
+      21..30  : playerz[p]:=64#> playerz[p]-8 <#312
+      31..40  : playerz[p]:=64#> playerz[p]-4 <#312
+      61..70  : playerz[p]:=64#> playerz[p]+4 <#312
+      71..80  : playerz[p]:=64#> playerz[p]+8 <#312
+      81..100 : playerz[p]:=64#> playerz[p]+16 <#312
+
+
+    {Offset the PlayerPosY by height off the ground (make gravity jump effect)}
+
+    playerPos[y+4*p]:= heightOffGround[p] + playerz[p]
+
+    {Set hurtbox to the corresponing playerPos}
+
+    HitBoxes[x+4*p]:= playerPos[x+4*p]+16
+    HitBoxes[y+4*p]:= playerPos[y+4*p]
+
+
+    {Player Pivoting}
+    if playerPos[x+4*p]<>x_prev[p] or playerPos[y+4*p]<>y_prev[p]    'Making sure Motion methods are activated when the players move horizontally and vertically'
+      playerState[2+9*p]:=true            'moving state                'Activate Moving state if X or Y position change'
+      if playerPos[x+4*p]>x_prev[p]
+        playerState[1+9*p]:=0             'rotation state              'Activate Pivot rotation state of X position is less than previous'
+      elseif playerPos[x+4*p]<x_prev[p]
+        playerState[1+9*p]:=1
+        playerState[2+9*p]:=true
+    else
+      playerState[2+9*p]:=false
+
+
+    {Player Jumping}
+    if (data[7+8*p].[6] == 0) and (playerState[4+9*p] == false)       'state[4] is the jumping state
+      playerState[4+9*p] := true                             '       CREDIT: Gemini -- AI Helped with the Jumping Logic, specifically on how to make it one motion with one press of B'
+
+    {Player Basic Attack}
+
+    if (data[7+8*p].[5] == 0) and (playerState[5+9*p] == false)       'playerState[5] is the attack state
+      playerState[5+9*p] := true                                      'Active base attack state when Y is pressed'
+      case_fast p
+        0 : playerState[0] := 100            'spriteState'
+        1 : playerState[9] := 0
+
+
+    if playerState[5+9*p]
+      case_fast p                                                      'Call specific base attack method'
+        0 : MomotPunch()
+        1 : GarnerBaseAttack()
+      waitms(50#> 600/deltax[p] <#333)
+
+    {Player Heavy Attack}
+
+    if (data[7+8*p].[3] == 0) and (playerState[6+9*p] == false)       'playerState[6] is the heavy attack state
+      playerState[6+9*p] := true                                       'Active heavy attack state when X is pressed'
+      case_fast p
+        0 : playerState[0] := 100            'spriteState'
+        1 : playerState[9] := 0
+
+
+    if playerState[6+9*p]                                               'Call specific heavy attack method'
+      case_fast p
+        0 : MomotKick()
+        1 : GarnerHeavyAttack()
+      waitms(50#> 600/deltax[p] <#333)
+
+    {Player Block}
+
+    if (data[7+8*p].[4] == 0) and (playerState[7+9*p] == false)       'playerState[7] is the block state
+      playerState[7+9*p] := true                                       'Active block state when A is pressed'
+      case_fast p
+        0 : playerState[0] := 100            'spriteState'
+        1 : playerState[9] := 0
+
+    if playerState[7+9*p]
+      case_fast p                                                    'Call specific block method'
+        0 : MomotBlock()
+        1 : GarnerBlock()
+
+   {Garner Attack Hitboxes}
+    if p == 1                                                        'Update Garner's Attack HitBoxes to match his position and rotation'
+     case_fast playerState[10]
+       0:
+        GGBATT[x]:=playerPos[x+4*p]+80
+        GGBATT[y]:=playerPos[y+4*p]-48
+        GGHeATT[x]:=playerPos[x+4*p]+80
+        GGHeATT[y]:=playerPos[y+4*p]-48
+       1:
+        GGBATT[x]:=playerPos[x+4*p]-64
+        GGBATT[y]:=playerPos[y+4*p]-48
+        GGHeATT[x]:=playerPos[x+4*p]-64
+        GGHeATT[y]:=playerPos[y+4*p]-48
+
+pub MomotMotion() | p
+{Handle the physics, behavior, and sprite logic for Momot}
+p:=0
+  repeat
+
+    if playerState[4+9*p] ' Jumping
+      case_fast p
+        0 : MomotJump()
+        1 : GarnerJump()
+
+    if playerState[2+9*p]==false
+      {Idle State}
+      Momot:= MM_I
+
+    repeat until playerState[2+9*p]==true
+
+    if playerState[2+9*p]==true
+    {Moving animation}
+        case Momot                              'Run through Momot's moving sprites'
+          MM_I : Momot:= MMSTEP0
+          MMSTEP0 : Momot:= MMSTEP1
+          MMSTEP1 : Momot:= MMSTEP2
+          MMSTEP2 : Momot:= MM_I
+        waitms(FrameTime#> 6*FrameTime/deltax[p] <#4*FrameTime)
+
+pub MomotJump() | p
+'deals with the Momot Jumping animation and speed
+  p:= 0 'For Momot
+  Momot:= MMCROUCH
+  waitms(1*FrameTime) 'Jumpsquat time
+  'if {short vs. full hop; read button again}
+  deltay[p]:= 75 ' jump v_i
+
+  repeat until deltay[p] <= -deltay[p] and heightOffGround[p] <= 0 'max fall speed: -deltay[p]
+    deltay[p] -= 15 'fall accel;
+    case_fast deltay[p]
+      -100..-1 : Momot:=MMRISE
+      0 : Momot:=MMFLOAT
+      1..100 : Momot:=MMFALL
+    waitms(FrameTime*1)
+  deltay[p]:=0 'Since landed, no longer falling
+  Momot:= MMCROUCH
+  waitms(1*FrameTime) 'landing lag time
+  Momot:=MM_I
+  playerState[4+9*p]:=false     'Once both conditions met, momot has landed
+
+pub MomotPunch()
+  if PunchRight == true       'Variable used to alternate which punching motion is used'
+    case Momot
+      100 : Momot:= 111                'Run through Momot's Punch Right sprites' (similar to motion logic from demo)
+      111 : Momot:= 112
+      112 : Momot:= 113
+      113 : Momot:= 114
+      114 : Momot:= 100
+        PunchRight:= false             'Set PunchRight to false to punch left next time'
+        playerState[5]:= false          'Set Punching flag to false to stop punching'
+  else
+    case Momot                          'Run through Momot's Punch left sprites' (similar to motion logic from demo)
+      100 : Momot:= 116
+      116 : Momot:= 117
+      117 : Momot:= 118
+      118 : Momot:= 119
+      119 : Momot:= 100
+        PunchRight:= true               'Set PunchRight to true to punch right next time'
+        playerState[5] := false        'Set Punching flag to false to stop punching'
+
+pub MomotKick()
+  case Momot
+      100 : Momot:= 122               'Run through Momot'Kick sprites' (similar to motion logic from demo)
+      122 : Momot:= 123
+      123 : Momot:= 124
+      124 : Momot:= 125
+      125 : Momot:= 126
+      126 : Momot:= 100
+        playerState[6]:= false
+
+pub MomotBlock()
+  if (data[7].[4] == 0)      'CREDIT: Gemini -- AI Helped rewrite this method when implementing two playable characters'
+    Momot := 115
+    playerState[7] := true          'Set Momot's sprite to blocking when blocking state is on'
+  else
+    Momot := 100
+    playerState[7] := false          'Reset Momot's sprite when not blocking'
+
+
+pub GarnerMotion() | p
+  p:=1
+   repeat
+    if playerState[4+9*p]                 'Jumping Logic'
+      case_fast p
+        0 : MomotJump()
+        1 : GarnerJump()
+
+
+    if playerState[2+9*p]==false            'Check to see if Cog 0 has set the MomotMoving flag to be true or false
+      {Idle State -- Make eye movement happer}
+      Garner:= GGIC
+      repeat until playerState[2+9*p]==true 'Repeat until moving
+
+    if playerState[2+9*p]==true
+    {Moving animation}
+        case Garner
+          GGIC : Garner:= 5                          'Run through Garner's walking sprites'
+          5 : Garner:= 6
+          6 : Garner:= 7
+          7 : Garner:= GGIC
+        waitms(FrameTime#> 6*FrameTime/deltax[p] <#4*FrameTime)
+
+
+
+pub GarnerJump() | p
+  'deals with the Garner Jumping animation and speed
+  p:= 1 'For Garner
+  Garner:= GGCROUCH
+  waitms(2*FrameTime) 'Jumpsquat time
+  'if {short vs. full hop; read button again}
+  deltay[p]:= 60 ' jump v_i
+  Garner:= GGLAND
+  waitms(1*FrameTime) 'Jumpsquat time
+  repeat until deltay[p] <= -deltay[p]+50 and heightOffGround[p] <= 0 'max fall speed: -deltay[p]
+    deltay[p] -= 20 'fall accel;
+    case_fast deltay[p]
+      -100..-1 :
+        case Garner
+          GGLAND : Garner:= GGJUMP
+          GGJUMP : Garner:= GGLAND
+          other : Garner:= GGLAND
+      0 : Garner:=GGJUMP
+      1..100 : Garner:=GGFALL
+    waitms(FrameTime*1)
+  deltay[p]:=0 'Since landed, no longer falling
+  Garner:= GGCROUCH
+  waitms(2*FrameTime) 'landing lag time
+  Garner:= GGIC
+  playerState[4+9*p]:=false     'Once both conditions met, player has landed
+
+pub GarnerBaseAttack()
+  case Garner
+    GGIC : Garner:=  GGINSTRUCT
+    case playerState[10]    'Adjust the Location of the Sprite Depending on Garner's Rotation'
+       0 : debug(`screen set (`(playerPos[x+4] + 64), `(playerPos[y+4])) sprite (`(GGAtt), 0, 3, 255)
+       1 : debug(`screen set (`(playerPos[x+4] - 64), `(playerPos[y+4])) sprite (`(GGAtt), 1, 3, 255)
+     case GGAtt
+        25 : GGAtt := 26    'Flicker Between two base attack sprites'
+        26 : GGAtt := 25
+    GGINSTRUCT : Garner := GGIC
+      playerState[14]:=false   'Set Base Attack Flag back to false to stop attacking'
+
+pub GarnerHeavyAttack()
+  case Garner
+    GGIC : Garner:=  GGINSTRUCT
+     case playerState[10] 'Adjust the Location of the Sprite Depending on Garner's Rotation'
+       0 : debug(`screen set (`(playerPos[x+4] + 64), `(playerPos[y+4])) sprite (`(GGHAtt), 0, 3, 255)
+       1 : debug(`screen set (`(playerPos[x+4] - 64), `(playerPos[y+4])) sprite (`(GGHAtt), 1, 3, 255)
+     case GGHAtt
+        27 : GGHAtt := 28     'Flicker Between two heavy attack sprites'
+        28 : GGHAtt := 27
+    GGINSTRUCT : Garner := GGIC
+      playerState[15]:=false    'Set Heavy Attack Flag back to false to stop attacking'
+
+pub GarnerBlock()
+  if (data[15].[4] == 0)
+    Garner := 10                  'Same logic and credit as Momot's Blocking Method'
+    playerState[16] := true
+  else
+    Garner := GGIC
+    playerState[16] := false
+
+pub DefineCollisionAreas() | i      'Define all the collision areas for all parts of the game'
+
+  playerPos[x]:=MOMOT_INIT[x]                        'X Position'
+  playerPos[y]:=MOMOT_INIT[y]                        'Y Position'       'Momot's Position (and Attack) Collision Area
+  playerz[0]:=MOMOT_INIT[y]                           'Width'
+  playerPos[width]:=MOMOT_INIT[width]                 'Height'
+  playerPos[height]:=MOMOT_INIT[height]
+
+  playerPos[x+4]:=GARNER_INIT[x]                                        'Garner's Position Collision Area'
+  playerPos[y+4]:=GARNER_INIT[y]
+  playerPos[width+4]:=GARNER_INIT[width]
+  playerPos[height+4]:=GARNER_INIT[height]
+  playerz[1]:=GARNER_INIT[y]
+                                                                        'Bullet Bill's Damage and Health Collision Area'
+  BulletB[0]:=700
+  BulletB[1]:=50 + getrnd()+//200
+  BulletB[2]:=64
+  BulletB[3]:=64
+
+                                                                      'Garner's Base Attack Collision Area'
+  GGBATT[0]:=GARNER_INIT[x]+80
+  GGBATT[1]:=GARNER_INIT[y]-48
+  GGBATT[2]:=80
+  GGBATT[3]:=48
+
+  GGHeATT[0]:=GARNER_INIT[x]+80                                     'Garner's Heavy Attack Collision Area'
+  GGHeATT[1]:=GARNER_INIT[y]-32
+  GGHeATT[2]:=80
+  GGHeATT[3]:=24
+                                                                    'Red Pikmin's Damage and Health Collision Area'
+  Pikmin[0]:=750
+  Pikmin[1]:=125
+  Pikmin[2]:=32
+  Pikmin[3]:=90
+
+  Pikmin[4]:=750                                                   'Yellow Pikmin's Damage and Health Collitions
+  Pikmin[5]:=125
+  Pikmin[6]:=32
+  Pikmin[7]:=90
+
+  Pikmin[8]:=750                                                  'Blue Pikmin's Damage and Health Collitions
+  Pikmin[9]:=125
+  Pikmin[10]:=32
+  Pikmin[11]:=90
+                                                                   'Momot's Defensive Hitbox'
+  HitBoxes[x]:=playerPos[x]+16
+  HitBoxes[y]:=playerPos[y]
+  HitBoxes[width]:=64
+  HitBoxes[height]:=MOMOT_INIT[height]
+                                                                   'Garner's Defensive Hitbox
+  HitBoxes[x+4]:=playerPos[x+4]+16
+  HitBoxes[y+4]:=playerPos[y+4]
+  HitBoxes[width+4]:=64
+  HitBoxes[height+4]:=GARNER_INIT[height]
+
+
+  HealthBoost[0]:=RPosX
+  HealthBoost[1]:=RPosY
+  HealthBoost[2]:=48
+  HealthBoost[3]:=48
+
+
+
+pub CheckCollision(Box1address,Box2address) : CollisionState      'CREDIT: This algorithm is based on the one described at https://developer.mozilla.org/en-US/docs/Games/Techniques/2D_collision_detection
+  CollisionState~                                                 'Initialize CollisionState as zero (which is the same as "false")
+  if long[Box1address]<(long[Box2address]+long[Box2address][2]) and {
+            }(long[Box1address]+long[Box1address][2])>long[Box2address] and {
+                 } long[Box1address][1]>(long[Box2address][1]-long[Box2address][3]) and {
+                      } (long[Box1address][1]-long[Box1address][3])<(long[Box2address][1])
+    CollisionState:=true                                          'If a collision is detected set the method's return value to "true" (which is -1 or 32 ones in binary)
+  else
+    CollisionState:=false
+
+  if CollisionDebugMode==true 'Show red bounding boxes around the characters and to display an alert on the screen whenever there's a collision.
+                              'Note this significantly slows down your main loop, so only use this feature for a brief time while debugging specific problems i.e., don't keep this active throughout your entire game making process!
+    debug(`screen set `(long[Box1address]) `(long[Box1address][1]) red line `(long[Box1address]+long[Box1address][2])) `(long[Box1address][1]))
+    debug(`screen set `(long[Box1address]+long[Box1address][2])) `(long[Box1address][1])) red line `(long[Box1address]+long[Box1address][2])) `(long[Box1address][1]-long[Box1address][3]))
+    debug(`screen set `(long[Box1address]+long[Box1address][2])) `(long[Box1address][1]-long[Box1address][3])) red line `(long[Box1address])) `(long[Box1address][1]-long[Box1address][3]))
+    debug(`screen set `(long[Box1address])) `(long[Box1address][1]-long[Box1address][3])) red line `(long[Box1address]) `(long[Box1address][1]))
+
+    debug(`screen set `(long[Box2address]) `(long[Box2address][1]) red line `(long[Box2address]+long[Box2address][2])) `(long[Box2address][1]))
+    debug(`screen set `(long[Box2address]+long[Box2address][2])) `(long[Box2address][1])) red line `(long[Box2address]+long[Box2address][2])) `(long[Box2address][1]-long[Box2address][3]))
+    debug(`screen set `(long[Box2address]+long[Box2address][2])) `(long[Box2address][1]-long[Box2address][3])) red line `(long[Box2address])) `(long[Box2address][1]-long[Box2address][3]))
+    debug(`screen set `(long[Box2address])) `(long[Box2address][1]-long[Box2address][3])) red line `(long[Box2address]) `(long[Box2address][1]))
+
+    if CollisionState==true
+      debug(`screen set 400 330 red text 50 'Collision!!!')
+
+pub PauseGame(player)                                   'If player presses the Select button on the controller, the game should pause until the player presses Select again. Note that this only pauses your main game loop on Cog 0. Other cogs will still be running as usual (which could continue to change some global variables).
+  debug(`screen set 400 330 red text 50 '<P`(player) PAUSED>')
+  'debug(`term1 'L Stick P1= `(data[0]) `(data[2])',10)
+  debug(`screen update `dly(1000))                'Force game window to update (in order to display the "<PAUSED>" text) then wait/delay 1 second
+  ReadController(1)                                'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
+  repeat until data[6].[4]==0                     'Wait for the player to press the + button a second time to un-pause the game
+    ReadController(1)                              'Jump down to the ReadController method to read/update the controller's current user input data via the I2C interface
+    waitms(100)                                   'Slow things down during this paused condition while just waiting for the usert to un-pause the game
+  repeat until data[6].[4]==1                     'Wait for the player to release the + button (otherwise another pause condition may be immediately initiated again)
+    ReadController(1)                              'Update the controller button data
+  StartTime:=getct()                              'Re-record current system clock counter (so that the >100ms warning isn't displayed when this frame finishes)
+
+
+pub DrawGame()                  'Responsible for rendering the sprites to the debug screen so that the game is visible
+    DrawBackground()
+    DrawActors()
+    if GameWon == false and GameLost == false       'Check if GameOver conditions are active before activating enemies'
+      DrawLevel(CurrentLevel)
+
+pub DrawBackground() | i,j
+
+  repeat i from 0 to 800 step 64                               'Draw Brick Wall and Floor Sprites (similar to floor tiles in demo)'
+      debug(`screen set (`(i), 64) sprite (200, 0, 2))
+      debug(`screen set (`(i), 128) sprite (200, 3, 2))
+      debug(`screen set (`(i), 192) sprite (200, 0, 2))
+      debug(`screen set (`(i), 256) sprite (200, 3, 2))
+      debug(`screen set (`(i), 320) sprite (201, 0, 2))
+      debug(`screen set (`(i), 384) sprite (201, 0, 2))
+      debug(`screen set (`(i), 448) sprite (201, 0, 2))
+      debug(`screen set (`(i), 512) sprite (201, 0, 2))
+      debug(`screen set (`(i), 576) sprite (201, 0, 2))
+      debug(`screen set (`(i), 640) sprite (201, 0, 2))
+      debug(`screen set (`(i), 704) sprite (201, 0, 2))
+
+  {Health Bar Names}
+
+  debug(`screen set 88 600 blue text 18 'Momot')
+  debug(`screen set 88 552 blue text 18 'Garner')
+
+  {Displays Current Level}
+
+  if GameWon == false and GameLost == false
+    debug(`screen set 400 400 red text 48 'Level `(CurrentLevel)')
+
+  {Displays Health Bars}
+
+  if HealthBar[0] > 0
+    debug(`screen set 88 576 color $DB1818 box 144 24)
+    debug(`screen set `(16+(HealthBar[0] / 2)) 576 color $1BDB18 box `(HealthBar[0]) 24)     'CREDIT: GEMINI -- Used AI to figure out how to make the healthbar go from left to right'
+  else
+    debug(`screen set 88 576 red text 18 'You Died...')
+                                                                                            'These two if statements display the healthbars of the two players which are replaced by the message,
+  if HealthBar[1] > 0                                                                         '"You died..." when the players run out of health
+    debug(`screen set 88 528 color $DB1818 box 144 24)
+    if pvpState == true
+      debug(`screen set `(16+(HealthBar[1] / 2)) 528 color $1818DB box `(HealthBar[1]) 24)   'Makes Garner Health Blue when PVP active'
+    else                                                                           '"You died..." when the players run out of health
+      debug(`screen set `(16+(HealthBar[1] / 2)) 528 color $1BDB18 box `(HealthBar[1]) 24)
+  else
+    debug(`screen set 88 528 red text 18 'You Died...')
+
+  {Display Winning Message}
+  if GameWon
+     debug(`screen set 400 560 red text 48 'You Win!!')
+     debug(`screen set 400 496 red text 24 'You saved the Mech Building and')
+     debug(`screen set 400 464 red text 24 'the P2 Chips from the Pikmin!!')
+     debug(`screen set 400 432 red text 20 'If you would like to play again P1 press START!!')
+
+  {Display Losing Message}
+  if GameLost
+     debug(`screen set 400 560 red text 48 'Game Over!!')
+     debug(`screen set 400 496 red text 24 'The Pikmin took over the Mech Building')
+     debug(`screen set 400 464 red text 24 'and destroyed all the P2 Chips!!')
+     debug(`screen set 400 432 red text 20 'If you would like to play again P1 press START!!')
+
+  debug(`screen set (upper-left_X_coordinate, upper-left_Y_coordinate) sprite (SpriteNumber, Rotation, ScalingFactor, SpriteOpacity))
+
+pub SpawnActors()
+    {Player Initial States}
+    Momot := 100
+    playerState[3]:=255
+    Garner := 0
+    playerState[12]:=255
+    playerPos[x]:=MOMOT_INIT[x]
+    playerPos[y]:=MOMOT_INIT[y]
+    playerPos[width]:=MOMOT_INIT[width]                   '
+    playerPos[height]:=MOMOT_INIT[height]
+    playerPos[x+4]:=GARNER_INIT[x]
+    playerPos[y+4]:=GARNER_INIT[y]
+    playerPos[width+4]:=GARNER_INIT[width]
+    playerPos[height+4]:=GARNER_INIT[height]
+    heightOffGround[0]:=0
+    heightOffGround[1]:=0
+    HealthBar[0]:=144
+    HealthBar[1]:=144
+    PunchRight := true
+    GGAtt:=25
+    GGHAtt:= 27
+
+    {Game Initial States}
+    KillCounter:=0
+    KillCounterCheck:=7
+    RandomCheck:= getrnd()+//5
+    RPosX := 50 + getrnd()+//600   'Set the HealthBoost X Position to a Random Number Between 50 and 650'
+    RPosY := 50 + getrnd()+//200   'Set the HealthBoost Y Position to a Random Number Between 50 and 250'
+
+pub SpawnEnemies()
+    {Enemy Initial States}
+    BulletHealth:=255
+    BulletRot:=1
+    Pikmin[0]:=750
+    Pikmin[1]:=50 + getrnd()+//200
+    PikminHealth[0]:=255
+    Pikmin[4]:=750
+    Pikmin[5]:=50 + getrnd()+//200
+    PikminHealth[1]:=255
+    HealthBoostGranted := false
+
+pub DrawActors()                'Draw all of the Characters on screen that change (players, enemies, items, health status)
+    {DRAWING SPRITES}
+            'Sprites's: X position,  Y position   Sprite's: image #,  rotation, scaling, opacity
+
+    {Momot}
+    if HealthBar[0] > 0
+      debug(`screen set (`(playerPos[x]), `(playerPos[y])) sprite (`(Momot), `(playerState[1]), 3, `(playerState[3]))
+
+    {Garner}
+    if HealthBar[1] > 0
+      debug(`screen set (`(playerPos[x+4]), `(playerPos[y+4])) sprite (`(Garner), `(playerState[10]), 3, `(playerState[12]))
+
+    {Health Boost -- Only sometimes active on Level 2}
+    if (CurrentLevel == 2 and HealthBoostGranted == false and SpawnBoost == true)
+      if (HealthBoostGranted == false)
+        debug(`screen set `(RPosX), `(RPosY)) sprite (133, 0, 3, 255))
+
+
+
+pub DrawLevel(level)    'Method that spawns enemies for each different level'
+  case_fast level
+    1 : {Level One}
+      {Bullet Bill}
+      if (BulletHealth > 16)                                                                               'Draw Enemy while their Health (opacity) is over 16'
+        debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
+      else
+        KillCounter:=KillCounter + 1  'Update Kill Counter'
+        if KillCounter < 10           'Respawn the Enemy while the Kill Counter is below a certain threshhold'
+          BulletHealth:= 255
+          BulletB[0]:=700              'Respawn by resetting enemy properties'
+          BulletB[1]:= 50 + getrnd()+//200  'Spawn the Enemy in a Random Y Position'
+          BulletRot:= 1
+      {Red Pikmin}
+      if (PikminHealth[0] > 16)
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1])) sprite (29, 0, 3, `(PikminHealth[0]))
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1]-48)) sprite (31, 0, 3, `(PikminHealth[0]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          PikminHealth[0] := 255
+          Pikmin[0]:=750
+          Pikmin[1]:=50 + getrnd()+//200
+      {Yellow Pikmin}
+      if (PikminHealth[1] > 16)
+        debug(`screen set `(Pikmin[4]), `(Pikmin[5])) sprite (33, 0, 3, `(PikminHealth[1]))
+        debug(`screen set `(Pikmin[4]), `(Pikmin[5]-48)) sprite (37, 0, 3, `(PikminHealth[1]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          PikminHealth[1] := 255
+          Pikmin[4]:=750
+          Pikmin[5]:=50 + getrnd()+//200
+    2 : {Level Two (Same Logic as Level 1 with Different Enemies}
+      {Blue Pikmin}
+      if (PikminHealth[2] > 16)
+        debug(`screen set `(Pikmin[8]), `(Pikmin[9])) sprite (35, 0, 3, `(PikminHealth[2]))
+        debug(`screen set `(Pikmin[8]), `(Pikmin[9]-48)) sprite (39, 0, 3, `(PikminHealth[2]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 15
+          PikminHealth[2]:= 255
+          Pikmin[8]:=750
+          Pikmin[9]:=50 + getrnd()+//200
+          {Red Pikmin}
+      if (PikminHealth[0] > 16)
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1])) sprite (29, 0, 3, `(PikminHealth[0]))
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1]-48)) sprite (31, 0, 3, `(PikminHealth[0]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          PikminHealth[0] := 255
+          Pikmin[0]:=750
+          Pikmin[1]:=50 + getrnd()+//200
+          {Yellow Pikmin}
+      if (PikminHealth[1] > 16)
+        debug(`screen set `(Pikmin[4]), `(Pikmin[5])) sprite (33, 0, 3, `(PikminHealth[1]))
+        debug(`screen set `(Pikmin[4]), `(Pikmin[5]-48)) sprite (37, 0, 3, `(PikminHealth[1]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          PikminHealth[1] := 255
+          Pikmin[4]:=750
+          Pikmin[5]:=50 + getrnd()+//200
+    3 : {Level Three (Same Logic as Level 1 and 2 with Different Enemies}
+       {Blue Pikmin}
+      if (PikminHealth[2] > 16)
+        debug(`screen set `(Pikmin[8]), `(Pikmin[9])) sprite (35, 0, 3, `(PikminHealth[2]))
+        debug(`screen set `(Pikmin[8]), `(Pikmin[9]-48)) sprite (39, 0, 3, `(PikminHealth[2]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 15
+          PikminHealth[2]:= 255
+          Pikmin[8]:=750
+          Pikmin[9]:=50 + getrnd()+//200
+          {Red Pikmin}
+      if (PikminHealth[0] > 16)
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1])) sprite (29, 0, 3, `(PikminHealth[0]))
+        debug(`screen set `(Pikmin[0]), `(Pikmin[1]-48)) sprite (31, 0, 3, `(PikminHealth[0]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          PikminHealth[0] := 255
+          Pikmin[0]:=750
+          Pikmin[1]:=50 + getrnd()+//200
+          {Yellow Pikmin}
+      if (PikminHealth[1] > 16)
+        debug(`screen set `(Pikmin[4]), `(Pikmin[5])) sprite (33, 0, 3, `(PikminHealth[1]))
+        debug(`screen set `(Pikmin[4]), `(Pikmin[5]-48)) sprite (37, 0, 3, `(PikminHealth[1]))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          PikminHealth[1] := 255
+          Pikmin[4]:=750
+          Pikmin[5]:=50 + getrnd()+//200
+          {Bullet Bill}
+      if (BulletHealth > 16)
+        debug(`screen set `(BulletB[0]), `(BulletB[1])) sprite (132, `(BulletRot), 4, `(BulletHealth))
+      else
+        KillCounter:=KillCounter + 1
+        if KillCounter < 10
+          BulletHealth:= 255
+          BulletB[0]:=700
+          BulletB[1]:= 50 + getrnd()+//200
+          BulletRot:= 1
+
+
+pub ShowInstructions() | i
+  debug(`term Instructions pos 140 100 size 75 24 textsize 12 color black white backcolor white)  'Create a new debug terminal window called called "Instructions" at x=140 y=100 on the PC screen (overlaid on plot window)                                                                                            ' that is 75 spaces wide by 10 lines deep with text color=black on white with white background and font size 12
+                                                                                                  ' that is 75 text spaces wide by 24 lines deep with text color=black on white with white background and font size 12
+  repeat i from 0 to 1                           'This is a demo of how to point to different string addresses in a "for" loop
+    PrintStr(@@StringAddress[i])                 'Print string who's starting address is at the specified memory location (Note: You must use two @ symbols to pass the address of a string like this!)
+  debug(`Instructions 2 15 3 10)                 'Set cursor's column to 30 and row to be 10 (2=set column command, 3=set row command -> see Text Terminal section of Spin2 Programming documnent)
+  PrintStr(@string2)                             'Print string who's starting address is at the memory location named string2
+  repeat until data[6].[2]==0                    'Wait until Start button is pressed on the Wii controller
+    ReadController(1)                             'Update data bytes from the Wii Controller
+    waitms(100)                                  'No need to do this too quickly as we're dealing with human-scale speeds and don't want to clober the I2C interface or waste electricity
+  debug(`Instructions clear)                     'Clear entire terminal window and reset cursor to home (upper left)
+  debug(`Instructions 2 33 3 5)                  'Set cursor's column to 33 and row to be 5
+  PrintStr(@string3)                             'Print string who's starting address is at the memory location named string3
+  waitms(750)
+  debug(`Instructions close)                     'Close this debug text terminal window
+
+pub PrintStr(strAddress)                        'Print a string of characters that starts at a specified memory address (with no new line afterward)
+  repeat (strsize(strAddress))                   'Repeat once for each character in the string (strsize returns the total length of the string up to its terminating 0
+    if byte[strAddress]==13                      'Check to see if the current character is code=13, which indicates a line feed and carriage return
+      debug(`debugWindow 13)                    'Create a new line and carriage return (i.e., return cursor to the far left)             `
+      strAddress++                               'Increment the string address index pointer by 1 to move on to the next character in the string
+    else
+      debug(`debugWindow `(byte[strAddress++])) 'Print the last character and increment the address pointer
+
+dat
+string0       byte "Mario Demo Game Instructions:", 13, 13, 0    'Define a zero-terminated string of characters/bytes starting at memory address "string0" Use character=13 to add new lines (2 in this case)
+string1       byte {                                             'Here's an example of how you can define one long string across multiple lines
+} "Use the Wii Controller's left joystick to move Mario around.", 13, "If Mario collides with Goomba, he becomes a ghost, but if Mario finds and  touches the FireFlower he is reborn.", 13, 13, {
+}"Hint: What happens if you press both the A and ZR buttons at the same time while Mario is standing on top of the topmost question mark? ;-)",0
+string2       byte "---> Press the Start Button to play...",0
+string3       byte "HAVE FUN!!!",0
+
+StringAddress long @string0, @string1, @string2, @string3        'Make a list/array that holds the addresses of these strings to make it easy to display them in a "for" loop or other scheme
+
+{GAME STORAGE}
+  {Spawn Locations}
+MOMOT_INIT  long 100, 284, 96, 96
+GARNER_INIT long 100, 154, 96, 96
+        {Which Bytes of the controller do we actually need to read}
+CTRLR_1_BYTES byte 0, 1 'Actually, this might not work as intended
+        {Parabola}
+PARABOLA byte 36, 25, 16, 9, 4, 1, 0, -1, -4, -9, -16, -25, -36
+con 'Your game must include the following two methods in order to use the Wii Classic Controller Pro
+
+pub SetupController(controller)               ''Set up the I2C interface through which the Wii Classic Controller Pro and the P2 chip communicate
+  if controller==0
+    i2c[controller].setup(10, 11, 400, i2c.PU_1K5)  'Set up I2C driver using the clock (Pin 10) and Data (Pin 11) pins' built-in 1.5K Ohm pull-up resistors
+  elseif controller==1
+    i2c[controller].setup(12, 13, 400, i2c.PU_1K5)
+  i2c[controller].start()                       'Initialize I2C interface
+  i2c[controller].write($A4)                    'Set address to $A400F0
+  i2c[controller].write($F0)
+  i2c[controller].write($55)                    'Write $55 to address $A4F0, which initializes nunchuck without encryption
+  i2c[controller].stop()
+  i2c[controller].start()
+  i2c[controller].write($A4)                    'Set address to $A4FB
+  i2c[controller].write($FB)
+  i2c[controller].write($00)                    'Write $00 to address $A4FB,
+  i2c[controller].stop()
+  waitus(150)
+
+  i2c[controller].start()
+  i2c[controller].write($A4)                    'Set address to $A4FE
+  i2c[controller].write($FE)
+  i2c[controller].write($03)                    'Write $55 to address $A400F0, which sets data format mode to $03
+  i2c[controller].stop()
+  waitus(150)
+
+pub ReadController(controller) | i            ''Have the P2 chip get the 8 bytes of data (with the button and joystick input states) from the Wii Classic Controller Pro via the I2C interface
+
+  i2c[controller].start()                       'Send Conversion Command (to get all sensor data read and stored into the 8-byte data registers)
+  i2c[controller].write($A4)                    'Set address to $A4 (the writing address)
+  i2c[controller].write($00)
+  i2c[controller].stop()
+  waitus(250)                       'The max speed for standard I2C protocol is 400kHz, so need to slow things down a little (may need to experiment with this depending on your controller and main loop time)
+
+  i2c[controller].start()
+  i2c[controller].write($A5)                    'Set address to $A5 (the start of where controller's input data is stored and read from)
+  if controller == 0
+    repeat i from 0 to 6
+      data[i]:=i2c[controller].read(0)            'Read in byte, store it to data array, then send 0=ACK
+    data[7]:=i2c[controller].read(1)              'Read in byte, store it to data array, then send 1=NAK (after the last byte)
+  elseif controller==1
+    repeat i from 0 to 6
+      data[i+8]:=i2c[controller].read(0)            'Read in byte, store it to data array, then send 0=ACK
+    data[7+8]:=i2c[controller].read(1)              'Read in byte, store it to data array, then send 1=NAK (after the last byte)
+  i2c[controller].stop()
+
+
+
+pub EnemyMotion()
+  if BulletHealth > 16
+    repeat
+      repeat until BulletB[0]<=0
+        BulletB[0]:=BulletB[0]-6
+        waitms(175)
+      BulletRot:= 0
+      repeat until BulletB[0]>=800
+        BulletB[0]:=BulletB[0]+6
+        waitms(175)
+      BulletRot:= 1
+
+pub PikminMotion() | RPikminPosX, RPikminPosY, YPikminPosX, YPikminPosY, BPikminPosX, BPikminPosY, i
+  RPikminPosX := Pikmin[0]
+  RPikminPosY := Pikmin[1]
+  YPikminPosX := Pikmin[4]
+  YPikminPosY := Pikmin[5]
+
+  repeat
+      if PikminHealth[0] > 16
+        if Pikmin[0] > 16
+          repeat i from 0 to 4
+            Pikmin[0]:=Pikmin[0]-16
+            waitms(175)
+        else
+          Pikmin[0]:= 750
+        RPikminPosX := Pikmin[0]
+        if Pikmin[1] < 250
+          repeat i from 0 to 4
+            Pikmin[1]:=Pikmin[1]+16
+            waitms(175)
+        else
+          repeat i from 0 to 4
+            Pikmin[1]:=Pikmin[1]-16
+            waitms(175)
+        RPikminPosY := Pikmin[1]
+      if PikminHealth[1] > 16
+        if Pikmin[4] > 16
+          repeat i from 0 to 4
+            Pikmin[4]:=Pikmin[4]-32
+            waitms(175)
+        else
+          Pikmin[4]:= 750
+        YPikminPosX := Pikmin[0]
+        if Pikmin[5] < 250
+          repeat i from 0 to 4
+            Pikmin[5]:=Pikmin[5]+32
+            waitms(175)
+        else
+          repeat i from 0 to 4
+            Pikmin[5]:=Pikmin[5]-24
+            waitms(175)
+        YPikminPosY := Pikmin[5]
+      if PikminHealth[2] > 16
+        if Pikmin[8] > 16
+          repeat i from 0 to 4
+            Pikmin[8]:=Pikmin[8]-16
+            waitms(175)
+        else
+          Pikmin[8]:= 750
+        BPikminPosX := Pikmin[8]
+        if Pikmin[9] < 250
+          repeat i from 0 to 4
+            Pikmin[9]:=Pikmin[9]+16
+            waitms(175)
+        else
+          repeat i from 0 to 4
+            Pikmin[9]:=Pikmin[9]-16
+            waitms(175)
+        BPikminPosY := Pikmin[9]
+
+pub EasterEgg()
+
+repeat
+  repeat until (data[6].[5]==0 and data[7].[7]==0 and data[6].[1]==0 and data[7].[2]==0) or (data[6+8].[5]==0 and data[7+8].[7]==0 and data[6+8].[1]==0 and data[7+8].[2]==0)
+    waitms(FrameTime)
+
+  {pvpState toggle}
+  case pvpState
+    true : pvpState:=false
+    false : pvpState:=true
+  repeat until data[6].[1] == 1 and data[6+8].[1] == 1
+    waitms(FrameTime)
+  waitms(FrameTime)
